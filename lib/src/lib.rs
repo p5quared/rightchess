@@ -1,13 +1,15 @@
 mod chesscom;
 mod error;
 mod game;
-mod memory;
+mod game_reader;
 mod source;
+mod store;
 mod sync;
 
 pub use chesscom::{ChessCom, ChessComBatch};
 pub use error::Error;
 pub use game::{Game, GameId, Pgn, SourceKind, YearMonth};
-pub use memory::MemoryStore;
+pub use game_reader::GameReader;
 pub use source::{Batch, BatchKey, GameQuery, GameSource};
+pub use store::MemoryStore;
 pub use sync::{SyncReport, SyncStore, sync};

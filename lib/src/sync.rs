@@ -2,9 +2,9 @@ use crate::{Batch, BatchKey, Error, Game, GameQuery, GameSource};
 
 pub trait SyncStore {
     /// True if the batch is stored and was sealed when it was saved.
-    fn is_sealed(&self, key: &BatchKey) -> bool;
-    /// Replaces any games previously saved for this batch.
-    fn save_batch(&mut self, key: BatchKey, sealed: bool, games: Vec<Game>);
+    fn is_sealed(&self, key: &BatchKey) -> Result<bool, Error>;
+    /// Atomically replaces the batch's games and sealed flag.
+    fn save_batch(&mut self, key: BatchKey, sealed: bool, games: Vec<Game>) -> Result<(), Error>;
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -22,23 +22,28 @@ pub fn sync<S: GameSource>(
     query: &GameQuery,
     store: &mut impl SyncStore,
 ) -> Result<SyncReport, Error> {
-    let (to_fetch, up_to_date): (Vec<_>, Vec<_>) = source
-        .batches(query)?
-        .into_iter()
-        .partition(|batch| !(batch.is_sealed() && store.is_sealed(&batch.key())));
+    let mut to_fetch = Vec::new();
+    let mut num_skipped = 0;
+    for batch in source.batches(query)? {
+        if batch.is_sealed() && store.is_sealed(&batch.key())? {
+            num_skipped += 1;
+        } else {
+            to_fetch.push(batch);
+        }
+    }
 
     let num_games = to_fetch
         .iter()
         .try_fold(0, |total, batch| -> Result<usize, Error> {
             let games = source.fetch(batch)?;
             let count = games.len();
-            store.save_batch(batch.key(), batch.is_sealed(), games);
+            store.save_batch(batch.key(), batch.is_sealed(), games)?;
             Ok(total + count)
         })?;
 
     Ok(SyncReport {
         num_fetched: to_fetch.len(),
-        num_skipped: up_to_date.len(),
+        num_skipped,
         num_games,
     })
 }
@@ -48,7 +53,7 @@ mod tests {
     use std::cell::RefCell;
 
     use super::*;
-    use crate::{GameId, MemoryStore, Pgn, SourceKind};
+    use crate::{GameId, GameReader, MemoryStore, Pgn, SourceKind};
 
     #[derive(Clone)]
     struct FakeBatch {
@@ -145,7 +150,12 @@ mod tests {
 
     #[track_caller]
     fn assert_stored(store: &MemoryStore, expected: &[&str]) {
-        let mut ids: Vec<_> = store.games().map(|g| g.id.external_id.as_str()).collect();
+        let mut ids: Vec<_> = store
+            .games()
+            .unwrap()
+            .into_iter()
+            .map(|g| g.id.external_id)
+            .collect();
         ids.sort();
         assert_eq!(ids, expected);
     }
@@ -156,7 +166,7 @@ mod tests {
     fn check(store: &mut MemoryStore, remote: &[FakeBatch], fetched: &[&str], stored: &[&str]) {
         let (report, source) = run(store, remote);
         assert_eq!(*source.fetched.borrow(), fetched);
-        let games = remote
+        let num_games = remote
             .iter()
             .filter(|b| fetched.contains(&b.id))
             .map(|b| b.games.unwrap().len())

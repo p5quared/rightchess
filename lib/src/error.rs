@@ -4,4 +4,6 @@ pub enum Error {
     Http(#[from] ureq::Error),
     #[error("unexpected response: {0}")]
     UnexpectedResponse(String),
+    #[error("storage failed: {0}")]
+    Storage(Box<dyn std::error::Error + Send + Sync>),
 }

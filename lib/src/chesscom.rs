@@ -179,7 +179,7 @@ fn games_from_month(response: MonthResponse) -> Vec<Game> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{MemoryStore, sync};
+    use crate::{GameReader, MemoryStore, sync};
 
     fn archives_url(username: &str) -> String {
         format!("{API_BASE}/player/{username}/games/archives")
@@ -343,7 +343,12 @@ mod tests {
         sync(&source, &query("erik", None), &mut store).unwrap();
         sync(&source, &query("hikaru", None), &mut store).unwrap();
 
-        let mut ids: Vec<_> = store.games().map(|g| g.id.external_id.as_str()).collect();
+        let mut ids: Vec<_> = store
+            .games()
+            .unwrap()
+            .into_iter()
+            .map(|g| g.id.external_id)
+            .collect();
         ids.sort();
         assert_eq!(ids, ["e1", "h1"]);
     }
