@@ -9,9 +9,9 @@ pub trait SyncStore {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct SyncReport {
-    pub fetched: usize,
-    pub skipped: usize,
-    pub games: usize,
+    pub num_fetched: usize,
+    pub num_skipped: usize,
+    pub num_games: usize,
 }
 
 /// Fetches every batch that could have changed since the last sync and saves it to `store`.
@@ -22,19 +22,25 @@ pub fn sync<S: GameSource>(
     query: &GameQuery,
     store: &mut impl SyncStore,
 ) -> Result<SyncReport, Error> {
-    let mut report = SyncReport::default();
-    for batch in source.batches(query)? {
-        let key = batch.key();
-        if batch.is_sealed() && store.is_sealed(&key) {
-            report.skipped += 1;
-            continue;
-        }
-        let games = source.fetch(&batch)?;
-        report.fetched += 1;
-        report.games += games.len();
-        store.save_batch(key, batch.is_sealed(), games);
-    }
-    Ok(report)
+    let (to_fetch, up_to_date): (Vec<_>, Vec<_>) = source
+        .batches(query)?
+        .into_iter()
+        .partition(|batch| !(batch.is_sealed() && store.is_sealed(&batch.key())));
+
+    let num_games = to_fetch
+        .iter()
+        .try_fold(0, |total, batch| -> Result<usize, Error> {
+            let games = source.fetch(batch)?;
+            let count = games.len();
+            store.save_batch(batch.key(), batch.is_sealed(), games);
+            Ok(total + count)
+        })?;
+
+    Ok(SyncReport {
+        num_fetched: to_fetch.len(),
+        num_skipped: up_to_date.len(),
+        num_games,
+    })
 }
 
 #[cfg(test)]
@@ -158,9 +164,9 @@ mod tests {
         assert_eq!(
             report.unwrap(),
             SyncReport {
-                fetched: fetched.len(),
-                skipped: remote.len() - fetched.len(),
-                games,
+                num_fetched: fetched.len(),
+                num_skipped: remote.len() - fetched.len(),
+                num_games,
             }
         );
         assert_stored(store, stored);
