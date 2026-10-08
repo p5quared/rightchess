@@ -65,10 +65,10 @@ impl ChessCom {
 /// One chess.com monthly archive.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChessComBatch {
-    pub username: String,
-    pub month: YearMonth,
-    pub url: String,
-    pub sealed: bool,
+    username: String,
+    month: YearMonth,
+    url: String,
+    sealed: bool,
 }
 
 impl Batch for ChessComBatch {
@@ -144,7 +144,7 @@ fn batches_from_archives(
 
 /// Parses the month from an archive url like `.../games/2024/03`.
 fn parse_archive_month(url: &str) -> Result<YearMonth, Error> {
-    let bad_url = || Error::BadArchiveUrl(url.to_string());
+    let bad_url = || Error::UnexpectedResponse(url.to_string());
     let mut segments = url.trim_end_matches('/').rsplit('/');
     let month: u8 = segments
         .next()
@@ -232,7 +232,7 @@ mod tests {
         let source = ChessCom::fake([(archives_url("someone"), archives_json(&[archive]))]);
         let result = source.batches(&query("someone", None));
         assert!(
-            matches!(result, Err(Error::BadArchiveUrl(_))),
+            matches!(result, Err(Error::UnexpectedResponse(_))),
             "{archive:?}: {result:?}"
         );
     }

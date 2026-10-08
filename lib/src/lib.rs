@@ -1,4 +1,4 @@
-pub mod chesscom;
+mod chesscom;
 mod error;
 mod game;
 mod memory;
