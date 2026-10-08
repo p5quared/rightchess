@@ -2,7 +2,7 @@ use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
 use crate::{
-    Batch, BatchKey, Error, Game, GameId, GameQuery, GameSource, Pgn, SourceKind, YearMonth,
+    Batch, BatchKey, Error, Game, GameId, GameSource, Pgn, SourceKind, SourceQuery, YearMonth,
 };
 
 const API_BASE: &str = "https://api.chess.com/pub";
@@ -87,7 +87,7 @@ impl Batch for ChessComBatch {
 impl GameSource for ChessCom {
     type Batch = ChessComBatch;
 
-    fn batches(&self, query: &GameQuery) -> Result<Vec<ChessComBatch>, Error> {
+    fn batches(&self, query: &SourceQuery) -> Result<Vec<ChessComBatch>, Error> {
         let username = query.username.to_lowercase();
         let url = format!("{API_BASE}/player/{username}/games/archives");
         let response: ArchivesResponse = self.get_json(&url)?;
@@ -193,8 +193,8 @@ mod tests {
         serde_json::json!({ "games": [{ "uuid": uuid, "pgn": "1. e4" }] }).to_string()
     }
 
-    fn query(username: &str, since: Option<YearMonth>) -> GameQuery {
-        GameQuery {
+    fn query(username: &str, since: Option<YearMonth>) -> SourceQuery {
+        SourceQuery {
             username: username.to_string(),
             since,
         }
@@ -357,7 +357,7 @@ mod tests {
     #[ignore = "hits the live chess.com API"]
     fn live_lists_and_fetches_archives() {
         let source = ChessCom::new("rightchess-dev");
-        let query = GameQuery {
+        let query = SourceQuery {
             username: "erik".to_string(),
             since: None,
         };

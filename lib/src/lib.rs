@@ -10,6 +10,6 @@ pub use chesscom::{ChessCom, ChessComBatch};
 pub use error::Error;
 pub use game::{Game, GameId, Pgn, SourceKind, YearMonth};
 pub use game_reader::GameReader;
-pub use source::{Batch, BatchKey, GameQuery, GameSource};
+pub use source::{Batch, BatchKey, GameSource, SourceQuery};
 pub use store::MemoryStore;
 pub use sync::{SyncReport, SyncStore, sync};

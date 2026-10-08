@@ -1,4 +1,4 @@
-use crate::{Batch, BatchKey, Error, Game, GameQuery, GameSource};
+use crate::{Batch, BatchKey, Error, Game, GameSource, SourceQuery};
 
 pub trait SyncStore {
     /// True if the batch is stored and was sealed when it was saved.
@@ -19,7 +19,7 @@ pub struct SyncReport {
 /// Batches are fetched one at a time. On error, batches saved before the failure stay saved.
 pub fn sync<S: GameSource>(
     source: &S,
-    query: &GameQuery,
+    query: &SourceQuery,
     store: &mut impl SyncStore,
 ) -> Result<SyncReport, Error> {
     let mut to_fetch = Vec::new();
@@ -110,7 +110,7 @@ mod tests {
     impl GameSource for FakeSource {
         type Batch = FakeBatch;
 
-        fn batches(&self, _query: &GameQuery) -> Result<Vec<FakeBatch>, Error> {
+        fn batches(&self, _query: &SourceQuery) -> Result<Vec<FakeBatch>, Error> {
             Ok(self.batches.clone())
         }
 
@@ -141,7 +141,7 @@ mod tests {
             batches: remote.to_vec(),
             fetched: RefCell::new(Vec::new()),
         };
-        let query = GameQuery {
+        let query = SourceQuery {
             username: "someone".to_string(),
             since: None,
         };

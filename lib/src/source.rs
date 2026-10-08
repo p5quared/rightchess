@@ -1,7 +1,7 @@
 use crate::{Error, Game, SourceKind, YearMonth};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GameQuery {
+pub struct SourceQuery {
     pub username: String,
     /// Only load batches from this month onward.
     pub since: Option<YearMonth>,
@@ -23,6 +23,6 @@ pub trait Batch {
 pub trait GameSource {
     type Batch: Batch;
 
-    fn batches(&self, query: &GameQuery) -> Result<Vec<Self::Batch>, Error>;
+    fn batches(&self, query: &SourceQuery) -> Result<Vec<Self::Batch>, Error>;
     fn fetch(&self, batch: &Self::Batch) -> Result<Vec<Game>, Error>;
 }
