@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 
+use anyhow::Result;
+
 use crate::app::game_reader::GameReader;
 use crate::app::sync::{BatchKey, SyncStore};
 use crate::domain::Game;
-use crate::error::Error;
 
 #[derive(Debug, Default)]
 pub struct MemoryStore {
@@ -23,18 +24,18 @@ impl MemoryStore {
 }
 
 impl SyncStore for MemoryStore {
-    fn is_sealed(&self, key: &BatchKey) -> Result<bool, Error> {
+    fn is_sealed(&self, key: &BatchKey) -> Result<bool> {
         Ok(self.batches.get(key).is_some_and(|b| b.sealed))
     }
 
-    fn save_batch(&mut self, key: BatchKey, sealed: bool, games: Vec<Game>) -> Result<(), Error> {
+    fn save_batch(&mut self, key: BatchKey, sealed: bool, games: Vec<Game>) -> Result<()> {
         self.batches.insert(key, StoredBatch { sealed, games });
         Ok(())
     }
 }
 
 impl GameReader for MemoryStore {
-    fn games(&self) -> Result<Vec<Game>, Error> {
+    fn games(&self) -> Result<Vec<Game>> {
         let unique: HashMap<_, _> = self
             .batches
             .values()

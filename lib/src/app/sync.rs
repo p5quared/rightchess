@@ -1,5 +1,5 @@
 use crate::domain::{Game, SourceKind, YearMonth};
-use crate::error::Error;
+use anyhow::{Context, Result};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceQuery {
@@ -24,15 +24,15 @@ pub trait Batch {
 pub trait GameSource {
     type Batch: Batch;
 
-    fn batches(&self, query: &SourceQuery) -> Result<Vec<Self::Batch>, Error>;
-    fn fetch(&self, batch: &Self::Batch) -> Result<Vec<Game>, Error>;
+    fn batches(&self, query: &SourceQuery) -> Result<Vec<Self::Batch>>;
+    fn fetch(&self, batch: &Self::Batch) -> Result<Vec<Game>>;
 }
 
 pub trait SyncStore {
     /// True if the batch is stored and was sealed when it was saved.
-    fn is_sealed(&self, key: &BatchKey) -> Result<bool, Error>;
+    fn is_sealed(&self, key: &BatchKey) -> Result<bool>;
     /// Atomically replaces the batch's games and sealed flag.
-    fn save_batch(&mut self, key: BatchKey, sealed: bool, games: Vec<Game>) -> Result<(), Error>;
+    fn save_batch(&mut self, key: BatchKey, sealed: bool, games: Vec<Game>) -> Result<()>;
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -49,10 +49,13 @@ pub fn sync<S: GameSource>(
     source: &S,
     query: &SourceQuery,
     store: &mut impl SyncStore,
-) -> Result<SyncReport, Error> {
+) -> Result<SyncReport> {
     let mut to_fetch = Vec::new();
     let mut num_skipped = 0;
-    for batch in source.batches(query)? {
+    let batches = source
+        .batches(query)
+        .with_context(|| format!("listing batches for {}", query.username))?;
+    for batch in batches {
         if batch.is_sealed() && store.is_sealed(&batch.key())? {
             num_skipped += 1;
         } else {
@@ -62,10 +65,15 @@ pub fn sync<S: GameSource>(
 
     let num_games = to_fetch
         .iter()
-        .try_fold(0, |total, batch| -> Result<usize, Error> {
-            let games = source.fetch(batch)?;
+        .try_fold(0, |total, batch| -> Result<usize> {
+            let key = batch.key();
+            let games = source
+                .fetch(batch)
+                .with_context(|| format!("fetching batch {}", key.id))?;
             let count = games.len();
-            store.save_batch(batch.key(), batch.is_sealed(), games)?;
+            store
+                .save_batch(key.clone(), batch.is_sealed(), games)
+                .with_context(|| format!("saving batch {}", key.id))?;
             Ok(total + count)
         })?;
 
@@ -140,15 +148,13 @@ mod tests {
     impl GameSource for FakeSource {
         type Batch = FakeBatch;
 
-        fn batches(&self, _query: &SourceQuery) -> Result<Vec<FakeBatch>, Error> {
+        fn batches(&self, _query: &SourceQuery) -> Result<Vec<FakeBatch>> {
             Ok(self.batches.clone())
         }
 
-        fn fetch(&self, batch: &FakeBatch) -> Result<Vec<Game>, Error> {
+        fn fetch(&self, batch: &FakeBatch) -> Result<Vec<Game>> {
             self.fetched.borrow_mut().push(batch.id);
-            let games = batch
-                .games
-                .ok_or_else(|| Error::Source("fetch failed".into()))?;
+            let games = batch.games.ok_or_else(|| anyhow::anyhow!("fetch failed"))?;
             Ok(games.iter().map(|id| game(id)).collect())
         }
     }
@@ -163,10 +169,7 @@ mod tests {
         }
     }
 
-    fn run(
-        store: &mut MemoryStore,
-        remote: &[FakeBatch],
-    ) -> (Result<SyncReport, Error>, FakeSource) {
+    fn run(store: &mut MemoryStore, remote: &[FakeBatch]) -> (Result<SyncReport>, FakeSource) {
         let source = FakeSource {
             batches: remote.to_vec(),
             fetched: RefCell::new(Vec::new()),

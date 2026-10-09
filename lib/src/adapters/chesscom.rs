@@ -1,9 +1,9 @@
+use anyhow::{Context, Result, anyhow};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
 use crate::app::sync::{Batch, BatchKey, GameSource, SourceQuery};
 use crate::domain::{Game, GameId, Pgn, SourceKind, YearMonth};
-use crate::error::Error;
 
 const API_BASE: &str = "https://api.chess.com/pub";
 /// Monthly archives of very active players can exceed ureq's 10MB default.
@@ -39,7 +39,7 @@ impl ChessCom {
         }
     }
 
-    fn get_json<T: DeserializeOwned>(&self, url: &str) -> Result<T, Error> {
+    fn get_json<T: DeserializeOwned>(&self, url: &str) -> Result<T> {
         match &self.http {
             Http::Ureq(agent) => {
                 let value = agent
@@ -52,7 +52,7 @@ impl ChessCom {
                             .limit(MAX_RESPONSE_BYTES)
                             .read_json()
                     })
-                    .map_err(|e| Error::Source(e.into()))?;
+                    .with_context(|| format!("requesting {url}"))?;
                 Ok(value)
             }
             #[cfg(test)]
@@ -91,14 +91,14 @@ impl Batch for ChessComBatch {
 impl GameSource for ChessCom {
     type Batch = ChessComBatch;
 
-    fn batches(&self, query: &SourceQuery) -> Result<Vec<ChessComBatch>, Error> {
+    fn batches(&self, query: &SourceQuery) -> Result<Vec<ChessComBatch>> {
         let username = query.username.to_lowercase();
         let url = format!("{API_BASE}/player/{username}/games/archives");
         let response: ArchivesResponse = self.get_json(&url)?;
         batches_from_archives(&username, response.archives, query.since)
     }
 
-    fn fetch(&self, batch: &ChessComBatch) -> Result<Vec<Game>, Error> {
+    fn fetch(&self, batch: &ChessComBatch) -> Result<Vec<Game>> {
         let response: MonthResponse = self.get_json(&batch.url)?;
         Ok(games_from_month(response))
     }
@@ -125,7 +125,7 @@ fn batches_from_archives(
     username: &str,
     urls: Vec<String>,
     since: Option<YearMonth>,
-) -> Result<Vec<ChessComBatch>, Error> {
+) -> Result<Vec<ChessComBatch>> {
     let mut batches = Vec::with_capacity(urls.len());
     for url in urls {
         let month = parse_archive_month(&url)?;
@@ -147,8 +147,8 @@ fn batches_from_archives(
 }
 
 /// Parses the month from an archive url like `.../games/2024/03`.
-fn parse_archive_month(url: &str) -> Result<YearMonth, Error> {
-    let bad_url = || Error::UnexpectedResponse(url.to_string());
+fn parse_archive_month(url: &str) -> Result<YearMonth> {
+    let bad_url = || anyhow!("unexpected archive url: {url}");
     let mut segments = url.trim_end_matches('/').rsplit('/');
     let month: u8 = segments
         .next()
@@ -237,9 +237,10 @@ mod tests {
     fn check_bad_archive(archive: &str) {
         let source = ChessCom::fake([(archives_url("someone"), archives_json(&[archive]))]);
         let result = source.batches(&query("someone", None));
+        let err = result.expect_err(archive);
         assert!(
-            matches!(result, Err(Error::UnexpectedResponse(_))),
-            "{archive:?}: {result:?}"
+            err.to_string().contains("unexpected archive url"),
+            "{archive:?}: {err}"
         );
     }
 
