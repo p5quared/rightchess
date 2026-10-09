@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
-use crate::{BatchKey, Error, Game, GameReader, SyncStore};
+use crate::app::game_reader::GameReader;
+use crate::app::sync::{BatchKey, SyncStore};
+use crate::domain::Game;
+use crate::error::Error;
 
 #[derive(Debug, Default)]
 pub struct MemoryStore {
@@ -44,5 +47,5 @@ impl GameReader for MemoryStore {
 
 #[cfg(test)]
 mod tests {
-    crate::store::contract::store_contract_tests!(super::MemoryStore::new());
+    crate::adapters::store::contract::store_contract_tests!(super::MemoryStore::new());
 }

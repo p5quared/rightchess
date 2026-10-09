@@ -1,4 +1,32 @@
-use crate::{Batch, BatchKey, Error, Game, GameSource, SourceQuery};
+use crate::domain::{Game, SourceKind, YearMonth};
+use crate::error::Error;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceQuery {
+    pub username: String,
+    /// Only load batches from this month onward.
+    pub since: Option<YearMonth>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct BatchKey {
+    pub source: SourceKind,
+    pub id: String,
+}
+
+/// A source-defined unit of fetching, e.g. one chess.com monthly archive.
+pub trait Batch {
+    fn key(&self) -> BatchKey;
+    /// True once the batch's games can no longer change.
+    fn is_sealed(&self) -> bool;
+}
+
+pub trait GameSource {
+    type Batch: Batch;
+
+    fn batches(&self, query: &SourceQuery) -> Result<Vec<Self::Batch>, Error>;
+    fn fetch(&self, batch: &Self::Batch) -> Result<Vec<Game>, Error>;
+}
 
 pub trait SyncStore {
     /// True if the batch is stored and was sealed when it was saved.
@@ -53,7 +81,9 @@ mod tests {
     use std::cell::RefCell;
 
     use super::*;
-    use crate::{GameId, GameReader, MemoryStore, Pgn, SourceKind};
+    use crate::adapters::MemoryStore;
+    use crate::app::game_reader::GameReader;
+    use crate::domain::{GameId, Pgn, SourceKind};
 
     #[derive(Clone)]
     struct FakeBatch {
@@ -118,7 +148,7 @@ mod tests {
             self.fetched.borrow_mut().push(batch.id);
             let games = batch
                 .games
-                .ok_or(Error::Http(ureq::Error::ConnectionFailed))?;
+                .ok_or_else(|| Error::Source("fetch failed".into()))?;
             Ok(games.iter().map(|id| game(id)).collect())
         }
     }

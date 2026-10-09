@@ -1,11 +1,13 @@
 //! Behavior every storage backend must share. A backend's test module runs it with
 //! `store_contract_tests!(make_store)`.
 
-use crate::{BatchKey, Game, GameId, GameReader, Pgn, SourceKind, SyncStore};
+use crate::app::game_reader::GameReader;
+use crate::app::sync::{BatchKey, SyncStore};
+use crate::domain::{Game, GameId, Pgn, SourceKind};
 
 macro_rules! store_contract_tests {
     ($make:expr) => {
-        $crate::store::contract::store_contract_tests!(@cases $make;
+        $crate::adapters::store::contract::store_contract_tests!(@cases $make;
             unknown_batch_is_not_sealed,
             batch_is_sealed_only_if_saved_sealed,
             resaving_a_batch_replaces_only_its_games,
@@ -19,7 +21,7 @@ macro_rules! store_contract_tests {
         $(
             #[test]
             fn $case() {
-                $crate::store::contract::$case($make);
+                $crate::adapters::store::contract::$case($make);
             }
         )*
     };

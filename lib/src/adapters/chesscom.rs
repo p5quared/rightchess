@@ -1,9 +1,9 @@
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
-use crate::{
-    Batch, BatchKey, Error, Game, GameId, GameSource, Pgn, SourceKind, SourceQuery, YearMonth,
-};
+use crate::app::sync::{Batch, BatchKey, GameSource, SourceQuery};
+use crate::domain::{Game, GameId, Pgn, SourceKind, YearMonth};
+use crate::error::Error;
 
 const API_BASE: &str = "https://api.chess.com/pub";
 /// Monthly archives of very active players can exceed ureq's 10MB default.
@@ -44,11 +44,15 @@ impl ChessCom {
             Http::Ureq(agent) => {
                 let value = agent
                     .get(url)
-                    .call()?
-                    .body_mut()
-                    .with_config()
-                    .limit(MAX_RESPONSE_BYTES)
-                    .read_json()?;
+                    .call()
+                    .and_then(|mut response| {
+                        response
+                            .body_mut()
+                            .with_config()
+                            .limit(MAX_RESPONSE_BYTES)
+                            .read_json()
+                    })
+                    .map_err(|e| Error::Source(e.into()))?;
                 Ok(value)
             }
             #[cfg(test)]
@@ -179,7 +183,9 @@ fn games_from_month(response: MonthResponse) -> Vec<Game> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{GameReader, MemoryStore, sync};
+    use crate::adapters::MemoryStore;
+    use crate::app::game_reader::GameReader;
+    use crate::app::sync::sync;
 
     fn archives_url(username: &str) -> String {
         format!("{API_BASE}/player/{username}/games/archives")
