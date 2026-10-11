@@ -3,7 +3,7 @@
 //! one. The en passant square follows the PGN spec: it's set after every double pawn push. The
 //! first ply that can't be played is an error that names it, and nothing follows it.
 
-use crate::{Fen, Pgn};
+use crate::chess::{Fen, Pgn};
 
 const START: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -523,7 +523,7 @@ mod properties {
     use proptest::test_runner::FileFailurePersistence;
 
     use super::*;
-    use crate::pgn::tests::games::{SOUP, game};
+    use crate::chess::pgn::tests::games::{SOUP, game};
 
     proptest! {
         #![proptest_config(ProptestConfig {

@@ -120,7 +120,7 @@ fn counter(text: &str) -> Result<u32> {
 /// position could arise isn't; playing from it checks that.
 #[cfg(test)]
 pub(crate) mod tests {
-    use crate::Fen;
+    use crate::chess::Fen;
 
     const START: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -141,7 +141,7 @@ pub(crate) mod tests {
 
     mod spec {
         use super::{START, check, check_err};
-        use crate::Fen;
+        use crate::chess::Fen;
 
         #[test]
         fn starting_position() {

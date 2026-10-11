@@ -1,3 +1,3 @@
 [workspace]
 resolver = "2"
-members = ["lib", "piglin"]
+members = ["core"]

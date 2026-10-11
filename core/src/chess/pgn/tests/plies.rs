@@ -1,7 +1,7 @@
 //! The contract of `Pgn::plies`: which parts of a PGN become plies. Only a move that isn't SAN
 //! is an error; text that isn't well-formed PGN never becomes a `Pgn`.
 
-use crate::{Pgn, Ply};
+use crate::chess::{Pgn, Ply};
 
 fn texts(plies: &[Ply]) -> Vec<&str> {
     plies.iter().map(Ply::as_str).collect()
@@ -156,7 +156,7 @@ mod properties {
     use proptest::test_runner::FileFailurePersistence;
 
     use super::*;
-    use crate::pgn::tests::games::{SOUP, game};
+    use crate::chess::pgn::tests::games::{SOUP, game};
 
     /// What the contract promises about every ply, whatever the input.
     fn check_ply(input: &str, ply: &str) -> Result<(), TestCaseError> {

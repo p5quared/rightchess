@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 use anyhow::{Context, Result, ensure};
 
-use crate::Fen;
+use crate::chess::Fen;
 
 /// A position as a key, for finding it again however a game reached it, e.g.
 /// `rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq -`. It's a FEN's first four
@@ -105,7 +105,7 @@ impl fmt::Display for NormalizedFen {
 /// Counters are dropped.
 #[cfg(test)]
 mod tests {
-    use crate::{Fen, NormalizedFen};
+    use crate::chess::{Fen, NormalizedFen};
 
     #[track_caller]
     fn normalize(fen: &str) -> NormalizedFen {
@@ -147,7 +147,7 @@ mod tests {
 
     mod spec {
         use super::{check, check_dropped, check_err, check_kept, normalize};
-        use crate::{Fen, NormalizedFen, Pgn};
+        use crate::chess::{Fen, NormalizedFen, Pgn};
 
         #[test]
         fn counters_are_dropped() {
@@ -344,8 +344,8 @@ mod tests {
         use proptest::prelude::*;
         use proptest::test_runner::FileFailurePersistence;
 
-        use crate::fen::tests::properties::fens;
-        use crate::{Fen, NormalizedFen};
+        use crate::chess::fen::tests::properties::fens;
+        use crate::chess::{Fen, NormalizedFen};
 
         /// The squares of a FEN's placement, rank 8 first, `.` for empty: `grid[0][0]` is a8.
         fn grid(placement: &str) -> Vec<Vec<char>> {

@@ -2,7 +2,7 @@
 //! variations and tags close, tags are `[Name "value"]` pairs before the movetext, and only
 //! comments follow the result. Its moves aren't; that's `Pgn::plies`.
 
-use crate::Pgn;
+use crate::chess::Pgn;
 
 mod fens;
 mod games;

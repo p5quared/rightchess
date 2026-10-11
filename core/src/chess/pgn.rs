@@ -4,8 +4,8 @@ use std::{fmt, iter};
 
 use anyhow::{Context, Result, anyhow, bail, ensure};
 
-use crate::board::Board;
-use crate::{Fen, Ply};
+use crate::chess::board::Board;
+use crate::chess::{Fen, Ply};
 
 /// One game in PGN, as written. Only well-formed text is a `Pgn`: comments, variations and tags
 /// are closed, tags are `[Name "value"]` pairs before the movetext, and only comments follow

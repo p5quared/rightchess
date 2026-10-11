@@ -1,6 +1,6 @@
 use std::fmt;
 
-use piglin::Pgn;
+use crate::chess::Pgn;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SourceKind {

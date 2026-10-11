@@ -2,7 +2,7 @@ use std::fmt;
 
 use anyhow::{Context, Result, anyhow, bail, ensure};
 
-use crate::{Fen, Ply};
+use crate::chess::{Fen, Ply};
 
 /// A position in standard chess: enough to play SAN moves and write FENs.
 #[derive(Debug, Clone)]

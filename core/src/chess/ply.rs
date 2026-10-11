@@ -110,7 +110,7 @@ impl fmt::Display for Ply {
 /// exactly when it reaches the first or last rank, and is never dropped there.
 #[cfg(test)]
 mod tests {
-    use crate::Ply;
+    use crate::chess::Ply;
 
     /// `san` parses, and the ply keeps it as written.
     #[track_caller]

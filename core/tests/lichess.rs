@@ -1,10 +1,10 @@
-//! Real games from lichess, through piglin's public API: each parses as written, gives lichess's
+//! Real games from lichess, through the crate's public API: each parses as written, gives lichess's
 //! own move list, and, in standard chess, plays through position by position, each with a key.
 
-use piglin::{Fen, NormalizedFen, Pgn};
 use proptest::prelude::*;
 use proptest::sample::{Index, select};
 use proptest::test_runner::FileFailurePersistence;
+use rightchess::{Fen, NormalizedFen, Pgn};
 use serde::Deserialize;
 
 /// One line of `fixtures/lichess_games.ndjson`: a game exported from lichess with clocks, evals
