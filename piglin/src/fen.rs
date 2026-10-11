@@ -119,7 +119,7 @@ fn counter(text: &str) -> Result<u32> {
 /// passant square behind the side that just moved, and counters that fit a `u32`. Whether the
 /// position could arise isn't; playing from it checks that.
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use crate::Fen;
 
     const START: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -302,7 +302,7 @@ mod tests {
         }
     }
 
-    mod properties {
+    pub(crate) mod properties {
         use proptest::prelude::*;
         use proptest::sample::Index;
         use proptest::test_runner::FileFailurePersistence;
@@ -370,6 +370,11 @@ mod tests {
 
         fn string_regex(regex: &str) -> impl Strategy<Value = String> + use<> {
             proptest::string::string_regex(regex).unwrap()
+        }
+
+        /// Any FEN whose counters fit a `u32`.
+        pub(crate) fn fens() -> impl Strategy<Value = Fen> {
+            string_regex(&fen(MORE_DIGITS)).prop_map(|text| text.parse().unwrap())
         }
 
         proptest! {

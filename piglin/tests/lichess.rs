@@ -1,7 +1,7 @@
 //! Real games from lichess, through piglin's public API: each parses as written, gives lichess's
-//! own move list, and, in standard chess, plays through position by position.
+//! own move list, and, in standard chess, plays through position by position, each with a key.
 
-use piglin::{Fen, Pgn};
+use piglin::{Fen, NormalizedFen, Pgn};
 use proptest::prelude::*;
 use proptest::sample::{Index, select};
 use proptest::test_runner::FileFailurePersistence;
@@ -104,6 +104,28 @@ fn standard_games_play_through() {
         assert_eq!(fens.len(), game.moves().len() + 1, "{name}");
         assert_eq!(fens[0], Fen::starting().as_str(), "{name}");
         check_sequence(&fens).unwrap_or_else(|err| panic!("{name}: {err}"));
+    }
+}
+
+/// Every position of a standard game has a key that keeps its placement, side to move and
+/// castling rights, and reads back from its text.
+#[test]
+fn standard_positions_normalize() {
+    for game in games()
+        .into_iter()
+        .filter(|game| game.variant == "standard")
+    {
+        let name = game.name();
+        for fen in parse(&game).fens() {
+            let fen = fen.unwrap_or_else(|err| panic!("{name}: {err}"));
+            let key = NormalizedFen::from(&fen);
+            let fields: Vec<&str> = fen.as_str().split(' ').collect();
+            let kept = format!("{} ", fields[..3].join(" "));
+            assert!(key.as_str().starts_with(&kept), "{name}: {fen} -> {key}");
+            let read = key.as_str().parse::<NormalizedFen>();
+            let read = read.unwrap_or_else(|err| panic!("{name}: {err}"));
+            assert_eq!(read, key, "{name}");
+        }
     }
 }
 
