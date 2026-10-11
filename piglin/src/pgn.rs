@@ -3,24 +3,22 @@ use std::ops::ControlFlow;
 
 use anyhow::{Context, Result, anyhow, ensure};
 
+use crate::Ply;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pgn(pub String);
-
-/// One half-move in SAN as written in the PGN, e.g. `Nf3+`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Ply(pub String);
 
 impl Pgn {
     /// The mainline's plies, in order. Each is a move as written minus trailing glyphs; tags,
     /// comments, variations, NAGs, move numbers and the result are skipped. Moves aren't checked
-    /// for legality. Fails on an unterminated comment, tag or variation, or an unmatched `)`,
-    /// `}` or `]`.
+    /// for legality. Fails on an unterminated comment, tag or variation, an unmatched `)`, `}`
+    /// or `]`, or a move that isn't SAN.
     pub fn plies(&self) -> Result<Vec<Ply>> {
-        Ok(mainline(lexemes(&self.0))?
+        mainline(lexemes(&self.0))?
             .into_iter()
             .filter_map(move_text)
-            .map(|san| Ply(san.to_string()))
-            .collect())
+            .map(str::parse)
+            .collect()
     }
 }
 

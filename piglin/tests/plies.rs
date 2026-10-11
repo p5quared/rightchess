@@ -3,7 +3,7 @@
 use piglin::{Pgn, Ply};
 
 fn texts(plies: &[Ply]) -> Vec<&str> {
-    plies.iter().map(|ply| ply.0.as_str()).collect()
+    plies.iter().map(Ply::as_str).collect()
 }
 
 /// `expected` lists the plies separated by spaces, e.g. `"e4 e5"`.
@@ -111,6 +111,8 @@ mod spec {
         check("1. e4 (1. d4 { a ) in a comment } d5) e5", "e4 e5");
         check("1. e4 (1. d4 ; a ) in a line comment\nd5) e5", "e4 e5");
         check("1. e4(1. d4)e5", "e4 e5");
+        // Moves in a variation aren't checked.
+        check("1. e4 (1. Nz9 hello) e5", "e4 e5");
     }
 
     #[test]
@@ -144,6 +146,14 @@ mod spec {
         check_err("1. e4 ) e5", "unmatched )");
         check_err("1. e4 } e5", "unmatched }");
         check_err("1. e4 ] e5", "unmatched ]");
+    }
+
+    #[test]
+    fn a_word_that_is_not_san_is_an_error() {
+        check_err("1. e4 Nz9", "Nz9");
+        check_err("1. e4 hello", "hello");
+        check_err("1. e4 e5!x", "e5!x");
+        check_err("1. e4 e5 2. e8", "e8");
     }
 }
 
@@ -183,8 +193,9 @@ mod properties {
     use super::*;
 
     /// A move as SAN writes it, e.g. `Nbxd7+`, `e8=Q#` or `O-O-O`.
-    const SAN: &str =
-        "([KQRBN][a-h]?[1-8]?x?[a-h][1-8]|[a-h](x[a-h])?[1-8](=[QRBN])?|O-O(-O)?)[+#]?";
+    const SAN: &str = "([KQRBN][a-h]?[1-8]?x?[a-h][1-8]\
+        |([a-h]|axb|bxc|cxd|dxe|exf|fxg|gxh|hxg|gxf|fxe|exd|dxc|cxb|bxa)([2-7]|[18]=[QRBN])\
+        |O-O(-O)?)[+#]?";
     const GLYPH: &str = r"!|\?|!!|\?\?|!\?|\?!";
     const MOVE_NUMBER: &str = r"[1-9][0-9]{0,2}\.{0,3}";
     /// A move number written against its move, as in `12.e4`.
