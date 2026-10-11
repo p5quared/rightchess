@@ -4,7 +4,8 @@ use std::{fmt, iter};
 
 use anyhow::{Context, Result, anyhow, bail, ensure};
 
-use crate::Ply;
+use crate::board::Board;
+use crate::{Fen, Ply};
 
 /// One game in PGN, as written. Only well-formed text is a `Pgn`: comments, variations and tags
 /// are closed, tags are `[Name "value"]` pairs before the movetext, and only comments follow
@@ -22,10 +23,33 @@ impl Pgn {
     /// for legality. Fails only on a move that isn't SAN.
     pub fn plies(&self) -> Result<Vec<Ply>> {
         mainline(&self.0)?
+            .words
             .into_iter()
             .filter_map(move_text)
             .map(str::parse)
             .collect()
+    }
+
+    /// The mainline's positions: the start, then one after each ply. The start is the `[FEN]`
+    /// tag, or the standard starting position without one. Moves are played by the rules of
+    /// standard chess; other variants are an error. Yields an error naming the first ply that
+    /// can't be played, then stops.
+    pub fn fens(&self) -> impl Iterator<Item = Result<Fen>> + '_ {
+        let (start, words) = match mainline(&self.0) {
+            Ok(mainline) => (start(&mainline.tags), mainline.words),
+            Err(err) => (Err(err), Vec::new()),
+        };
+        let mut moves = words.into_iter().filter_map(move_text);
+        let mut next = Some(start);
+        iter::from_fn(move || {
+            let board = next.take()?;
+            Some(board.map(|board| {
+                next = moves
+                    .next()
+                    .map(|san| san.parse().and_then(|ply| board.play(&ply)));
+                board.fen()
+            }))
+        })
     }
 }
 
@@ -53,10 +77,40 @@ enum Section {
     AfterResult,
 }
 
-/// The words outside comments, tags and variations: moves, move numbers, glyphs, NAGs and the
-/// result. Fails unless `text` is one game: delimiters close, tags are well-formed pairs before
-/// the movetext, and only comments follow the result.
-fn mainline(text: &str) -> Result<Vec<&str>> {
+/// The position a game starts from: its `[FEN]` tag, or the standard starting position. Fails
+/// for variants other than standard chess.
+fn start(tags: &[(&str, String)]) -> Result<Board> {
+    let tag = |name| {
+        tags.iter()
+            .find(|(tag, _)| *tag == name)
+            .map(|(_, value)| value.as_str())
+    };
+    if let Some(variant) = tag("Variant") {
+        ensure!(
+            matches!(variant, "Standard" | "From Position"),
+            "unsupported variant {variant}"
+        );
+    }
+    let fen = match tag("FEN") {
+        Some(fen) => fen.parse()?,
+        None => Fen::starting(),
+    };
+    Board::from_fen(&fen)
+}
+
+/// The tags and words of a game outside comments and variations.
+struct Mainline<'a> {
+    /// Names and values, in order.
+    tags: Vec<(&'a str, String)>,
+    /// Moves, move numbers, glyphs, NAGs and the result.
+    words: Vec<&'a str>,
+}
+
+/// The tags and words outside comments and variations. Fails unless `text` is one game:
+/// delimiters close, tags are well-formed pairs before the movetext, and only comments follow
+/// the result.
+fn mainline(text: &str) -> Result<Mainline<'_>> {
+    let mut tags = Vec::new();
     let mut words = Vec::new();
     let mut section = Section::Tags;
     let mut depth = 0u32;
@@ -78,11 +132,12 @@ fn mainline(text: &str) -> Result<Vec<&str>> {
             "{lexeme} after the result"
         );
         if lexeme.starts_with('[') {
-            ensure!(is_tag_pair(lexeme), "malformed tag {lexeme}");
+            let pair = tag_pair(lexeme).with_context(|| format!("malformed tag {lexeme}"))?;
             ensure!(
                 matches!(section, Section::Tags),
                 "{lexeme} after the movetext"
             );
+            tags.push(pair);
             continue;
         }
         match lexeme {
@@ -96,27 +151,35 @@ fn mainline(text: &str) -> Result<Vec<&str>> {
         };
     }
     ensure!(depth == 0, "unterminated variation");
-    Ok(words)
+    Ok(Mainline { tags, words })
 }
 
-/// Whether `tag` is a pair like `[Event "x"]`: a name of letters, digits and `_` that doesn't
-/// start with `_`, then one quoted value, with optional whitespace around each.
-fn is_tag_pair(tag: &str) -> bool {
-    let Some(inner) = tag.strip_prefix('[').and_then(|tag| tag.strip_suffix(']')) else {
-        return false;
-    };
+/// The name and unescaped value of a pair like `[Event "x"]`: a name of letters, digits and `_`
+/// that doesn't start with `_`, then one quoted value, with optional whitespace around each.
+fn tag_pair(tag: &str) -> Option<(&str, String)> {
+    let inner = tag.strip_prefix('[')?.strip_suffix(']')?;
     let inner = inner.trim_start();
     let name_len = inner
         .find(|c: char| !c.is_ascii_alphanumeric() && c != '_')
         .unwrap_or(inner.len());
     let (name, rest) = inner.split_at(name_len);
-    let Some(value) = rest.trim_start().strip_prefix('"') else {
-        return false;
-    };
-    let after_value = quoted_len(value).map(|len| &value[len..]);
-    !name.is_empty()
-        && !name.starts_with('_')
-        && after_value.is_some_and(|rest| rest.trim().is_empty())
+    let value = rest.trim_start().strip_prefix('"')?;
+    let (value, after_value) = value.split_at(quoted_len(value)?);
+    let well_formed = !name.is_empty() && !name.starts_with('_') && after_value.trim().is_empty();
+    well_formed.then(|| (name, unescape(&value[..value.len() - 1])))
+}
+
+/// A quoted value without its `\` escapes.
+fn unescape(value: &str) -> String {
+    let mut escaped = false;
+    value
+        .chars()
+        .filter(|&c| {
+            let keep = escaped || c != '\\';
+            escaped = !escaped && c == '\\';
+            keep
+        })
+        .collect()
 }
 
 /// The length of a quoted value up to and including its closing `"`, where `\"` and `\\` are
