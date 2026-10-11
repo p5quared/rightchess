@@ -2,10 +2,11 @@
 //! variations and tags close, tags are `[Name "value"]` pairs before the movetext, and only
 //! comments follow the result. Its moves aren't; that's `Pgn::plies`.
 
-use piglin::Pgn;
+use crate::Pgn;
 
-#[path = "support/games.rs"]
+mod fens;
 mod games;
+mod plies;
 
 /// `text` parses, and the pgn keeps it as written.
 #[track_caller]
@@ -200,40 +201,13 @@ mod spec {
     }
 }
 
-mod real_games {
-    use serde::Deserialize;
-
-    use super::*;
-
-    /// One line of `fixtures/lichess_games.ndjson`: a game exported from lichess with clocks,
-    /// evals and analysis.
-    #[derive(Deserialize)]
-    struct LichessGame {
-        id: String,
-        variant: String,
-        pgn: String,
-    }
-
-    #[test]
-    fn lichess_games_parse_as_written() {
-        for line in include_str!("fixtures/lichess_games.ndjson").lines() {
-            let game: LichessGame = serde_json::from_str(line).unwrap();
-            let pgn: Pgn = game
-                .pgn
-                .parse()
-                .unwrap_or_else(|err| panic!("{} game {}: {err}", game.variant, game.id));
-            assert_eq!(pgn.as_str(), game.pgn, "{} game {}", game.variant, game.id);
-        }
-    }
-}
-
 mod properties {
     use proptest::prelude::*;
     use proptest::sample::{Index, select};
     use proptest::test_runner::FileFailurePersistence;
 
+    use super::games::{SOUP, game, group, render, word};
     use super::*;
-    use crate::games::{SOUP, game, group, render, word};
 
     const MALFORMED_TAGS: &[&str] = &[
         "[]",

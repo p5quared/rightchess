@@ -113,3 +113,284 @@ fn counter(text: &str) -> Result<u32> {
     text.parse()
         .map_err(|_| anyhow!("counter {text} doesn't fit a u32"))
 }
+
+/// The contract of `Fen`: which text is a position in FEN. Its structure is checked: six fields
+/// split by single spaces, eight ranks of eight squares, castling rights in `KQkq` order, an en
+/// passant square behind the side that just moved, and counters that fit a `u32`. Whether the
+/// position could arise isn't; playing from it checks that.
+#[cfg(test)]
+mod tests {
+    use crate::Fen;
+
+    const START: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+
+    /// `fen` parses, and the fen keeps it as written.
+    #[track_caller]
+    fn check(fen: &str) {
+        let parsed: Fen = fen.parse().unwrap_or_else(|err| panic!("{fen:?}: {err}"));
+        assert_eq!(parsed.as_str(), fen);
+        assert_eq!(parsed.to_string(), fen);
+    }
+
+    /// `text` doesn't parse, and the error names it.
+    #[track_caller]
+    fn check_err(text: &str) {
+        let err = text.parse::<Fen>().expect_err(text);
+        assert!(err.to_string().contains(text), "{text:?}: {err}");
+    }
+
+    mod spec {
+        use super::{START, check, check_err};
+        use crate::Fen;
+
+        #[test]
+        fn starting_position() {
+            check(START);
+            assert_eq!(Fen::starting().as_str(), START);
+        }
+
+        #[test]
+        fn positions_from_games() {
+            for fen in [
+                "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1",
+                "rnbqkbnr/pp1ppppp/8/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2",
+                "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/3P1N2/PPP2PPP/RNBQK2R w KQkq - 1 5",
+                "3q3k/p3Q1bp/1p1p2p1/5r2/2rP1P2/2P5/P2B2PP/1R2R1K1 b - - 0 23",
+                "8/8/8/8/8/8/8/K6k w - - 99 150",
+            ] {
+                check(fen);
+            }
+        }
+
+        #[test]
+        fn en_passant_squares() {
+            for file in 'a'..='h' {
+                check(&format!("4k3/8/8/8/8/8/8/4K3 b - {file}3 0 1"));
+                check(&format!("4k3/8/8/8/8/8/8/4K3 w - {file}6 0 1"));
+            }
+        }
+
+        #[test]
+        fn castling_rights() {
+            for rights in [
+                "-", "K", "Q", "k", "q", "KQ", "Kk", "Kq", "Qk", "Qq", "kq", "KQk", "KQq", "Kkq",
+                "Qkq", "KQkq",
+            ] {
+                check(&format!("r3k2r/8/8/8/8/8/8/R3K2R w {rights} - 0 1"));
+            }
+        }
+
+        #[test]
+        fn counters() {
+            for counters in ["0 1", "1 1", "50 100", "4294967295 4294967295"] {
+                check(&format!("4k3/8/8/8/8/8/8/4K3 w - - {counters}"));
+            }
+        }
+
+        #[test]
+        fn positions_that_could_not_arise() {
+            for fen in [
+                "8/8/8/8/8/8/8/8 w - - 0 1",
+                "QQQQQQQQ/QQQQQQQQ/8/8/8/8/kkkkkkkk/KKKKKKKK b - - 0 1",
+                "P3k3/8/8/8/8/8/8/p3K3 w - - 0 1",
+                "4k3/8/8/8/8/8/8/4K3 w KQkq e6 0 1",
+                "4k3/8/8/8/8/8/8/4K2R b - - 0 1",
+            ] {
+                check(fen);
+            }
+        }
+
+        #[test]
+        fn malformed_fields() {
+            for text in [
+                "",
+                " ",
+                "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR",
+                "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -",
+                "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0",
+                "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 0",
+                "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 ",
+                " rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+                "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w  KQkq - 0 1",
+                "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR\tw KQkq - 0 1",
+                "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1\n",
+                "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w  - 0 1",
+            ] {
+                check_err(text);
+            }
+        }
+
+        #[test]
+        fn malformed_boards() {
+            for board in [
+                "",
+                "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP",
+                "rnbqkbnr/pppppppp/8/8/8/8/8/PPPPPPPP/RNBQKBNR",
+                "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR/",
+                "/rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR",
+                "rnbqkbnr/pppppppp/8/8//8/PPPPPPPP/RNBQKBNR",
+                "rnbqkbn/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR",
+                "rnbqkbnrr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR",
+                "rnbqkbnr/pppppppp/7/8/8/8/PPPPPPPP/RNBQKBNR",
+                "rnbqkbnr/pppppppp/9/8/8/8/PPPPPPPP/RNBQKBNR",
+                "rnbqkbnr/pppppppp/08/8/8/8/PPPPPPPP/RNBQKBNR",
+                "rnbqkbnr/pppppppp/44/8/8/8/PPPPPPPP/RNBQKBNR",
+                "rnbqkbnr/pppppppp/71/8/8/8/PPPPPPPP/RNBQKBNR",
+                "rnbqkbnr/pppppppp/4P21/8/8/8/PPPP1PPP/RNBQKBNR",
+                "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNX",
+                "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQ.BNR",
+                "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQ KBN",
+            ] {
+                check_err(&format!("{board} w KQkq - 0 1"));
+            }
+        }
+
+        #[test]
+        fn malformed_sides_to_move() {
+            for side in ["W", "B", "-", "wb", "white"] {
+                check_err(&format!("4k3/8/8/8/8/8/8/4K3 {side} - - 0 1"));
+            }
+        }
+
+        #[test]
+        fn malformed_castling_rights() {
+            for rights in [
+                "qk", "kK", "QK", "KK", "KQkqK", "kqKQ", "X", "KQ-", "-K", "--", "A", "Hh", "kQ",
+            ] {
+                check_err(&format!("r3k2r/8/8/8/8/8/8/R3K2R w {rights} - 0 1"));
+            }
+        }
+
+        #[test]
+        fn malformed_en_passant_squares() {
+            for (side, square) in [
+                ("w", "e3"),
+                ("b", "e6"),
+                ("w", "e4"),
+                ("b", "e5"),
+                ("w", "e1"),
+                ("b", "e8"),
+                ("w", "i6"),
+                ("b", "E3"),
+                ("w", "e"),
+                ("w", "6"),
+                ("w", "e66"),
+                ("w", "--"),
+            ] {
+                check_err(&format!("4k3/8/8/8/8/8/8/4K3 {side} - {square} 0 1"));
+            }
+        }
+
+        #[test]
+        fn malformed_counters() {
+            for counters in [
+                "-1 1",
+                "+1 1",
+                "01 1",
+                "00 1",
+                "1.0 1",
+                "x 1",
+                "0 0",
+                "0 -1",
+                "0 01",
+                "0 x",
+                "4294967296 1",
+                "0 4294967296",
+            ] {
+                check_err(&format!("4k3/8/8/8/8/8/8/4K3 w - - {counters}"));
+            }
+        }
+    }
+
+    mod properties {
+        use proptest::prelude::*;
+        use proptest::sample::Index;
+        use proptest::test_runner::FileFailurePersistence;
+        use regex::Regex;
+
+        use super::*;
+
+        const PIECE: &str = "[pnbrqkPNBRQK]";
+        /// How many digits may follow a counter's first one when generating: few enough to fit a
+        /// `u32`.
+        const MORE_DIGITS: &str = "{0,8}";
+
+        /// A rank of `n` squares that doesn't start with a digit if `after_digit`: digits for runs of
+        /// empty squares, never two in a row.
+        fn rank(n: u32, after_digit: bool) -> String {
+            if n == 0 {
+                return String::new();
+            }
+            let mut ways = vec![format!("{PIECE}{}", rank(n - 1, false))];
+            if !after_digit {
+                ways.extend((1..=n).map(|d| format!("{d}{}", rank(n - d, true))));
+            }
+            format!("({})", ways.join("|"))
+        }
+
+        /// FEN as a regex, with `more_digits` after each counter's first digit: the oracle the
+        /// parser must agree with, apart from the `u32` bound. The fullmove number isn't 0.
+        fn fen(more_digits: &str) -> String {
+            let rank = rank(8, false);
+            let board = format!("{rank}(/{rank}){{7}}");
+            let castling = "(-|KQ?k?q?|Qk?q?|kq?|q)";
+            format!(
+                "{board} (w {castling} (-|[a-h]6)|b {castling} (-|[a-h]3)) (0|[1-9][0-9]{more_digits}) [1-9][0-9]{more_digits}"
+            )
+        }
+
+        /// Characters that FEN uses, so that near misses come up often.
+        const SOUP: &str = r"[pnbrqkPNBRQKXx0-9/ wbWB\-a-iA-H.\t]";
+
+        /// A FEN with one character added, removed or replaced.
+        fn near_miss() -> impl Strategy<Value = String> {
+            let edit = prop_oneof![
+                (any::<Index>(), SOUP).prop_map(|(at, c)| (at, 0, c)),
+                any::<Index>().prop_map(|at| (at, 1, String::new())),
+                (any::<Index>(), SOUP).prop_map(|(at, c)| (at, 1, c)),
+            ];
+            (string_regex(&fen(MORE_DIGITS)), edit).prop_map(|(fen, (at, removed, added))| {
+                let mut chars: Vec<char> = fen.chars().collect();
+                let at = at.index(chars.len() + 1).min(chars.len());
+                let end = (at + removed).min(chars.len());
+                chars.splice(at..end, added.chars());
+                chars.into_iter().collect()
+            })
+        }
+
+        /// Whether `text` is a FEN: it matches the regex, and its counters fit a `u32`.
+        fn is_fen(text: &str) -> bool {
+            let oracle = Regex::new(&format!(r"\A(?:{})\z", fen("*"))).unwrap();
+            oracle.is_match(text)
+                && text
+                    .rsplit(' ')
+                    .take(2)
+                    .all(|counter| counter.parse::<u32>().is_ok())
+        }
+
+        fn string_regex(regex: &str) -> impl Strategy<Value = String> + use<> {
+            proptest::string::string_regex(regex).unwrap()
+        }
+
+        proptest! {
+            #![proptest_config(ProptestConfig {
+                failure_persistence: Some(Box::new(FileFailurePersistence::WithSource("regressions"))),
+                ..ProptestConfig::default()
+            })]
+
+            #[test]
+            fn fen_parses_as_written(text in string_regex(&fen(MORE_DIGITS))) {
+                let fen: Fen = text.parse().map_err(|err: anyhow::Error| TestCaseError::fail(err.to_string()))?;
+                prop_assert_eq!(fen.as_str(), &text);
+                prop_assert_eq!(fen.to_string(), text);
+            }
+
+            #[test]
+            fn text_parses_exactly_when_it_is_fen(
+                text in prop_oneof![near_miss(), string_regex(&format!("{SOUP}{{0,80}}")), any::<String>()]
+            ) {
+                prop_assert_eq!(text.parse::<Fen>().is_ok(), is_fen(&text), "{:?}", text);
+            }
+        }
+    }
+}

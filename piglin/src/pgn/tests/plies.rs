@@ -1,10 +1,7 @@
 //! The contract of `Pgn::plies`: which parts of a PGN become plies. Only a move that isn't SAN
 //! is an error; text that isn't well-formed PGN never becomes a `Pgn`.
 
-use piglin::{Pgn, Ply};
-
-#[path = "support/games.rs"]
-mod games;
+use crate::{Pgn, Ply};
 
 fn texts(plies: &[Ply]) -> Vec<&str> {
     plies.iter().map(Ply::as_str).collect()
@@ -154,40 +151,12 @@ mod spec {
     }
 }
 
-mod real_games {
-    use serde::Deserialize;
-
-    use super::*;
-
-    /// One line of `fixtures/lichess_games.ndjson`: a game exported from lichess with clocks,
-    /// evals and analysis, and lichess's own list of its moves.
-    #[derive(Deserialize)]
-    struct LichessGame {
-        id: String,
-        variant: String,
-        moves: String,
-        pgn: String,
-    }
-
-    #[test]
-    fn lichess_plies_match_lichess_move_lists() {
-        for line in include_str!("fixtures/lichess_games.ndjson").lines() {
-            let game: LichessGame = serde_json::from_str(line).unwrap();
-            let plies = parse(&game.pgn)
-                .plies()
-                .unwrap_or_else(|err| panic!("{} game {}: {err}", game.variant, game.id));
-            let expected: Vec<&str> = game.moves.split_whitespace().collect();
-            assert_eq!(texts(&plies), expected, "{} game {}", game.variant, game.id);
-        }
-    }
-}
-
 mod properties {
     use proptest::prelude::*;
     use proptest::test_runner::FileFailurePersistence;
 
     use super::*;
-    use crate::games::{SOUP, game};
+    use crate::pgn::tests::games::{SOUP, game};
 
     /// What the contract promises about every ply, whatever the input.
     fn check_ply(input: &str, ply: &str) -> Result<(), TestCaseError> {

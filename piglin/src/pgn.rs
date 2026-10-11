@@ -262,3 +262,6 @@ fn move_text(word: &str) -> Option<&str> {
     let is_number = san.chars().all(|c| c.is_ascii_digit());
     (!is_nag && !is_result && !is_number).then_some(san)
 }
+
+#[cfg(test)]
+mod tests;

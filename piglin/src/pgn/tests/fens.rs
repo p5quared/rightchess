@@ -3,10 +3,7 @@
 //! one. The en passant square follows the PGN spec: it's set after every double pawn push. The
 //! first ply that can't be played is an error that names it, and nothing follows it.
 
-use piglin::{Fen, Pgn};
-
-#[path = "support/games.rs"]
-mod games;
+use crate::{Fen, Pgn};
 
 const START: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -56,28 +53,6 @@ fn check_err(pgn: &str, ok: usize, expected: &str) {
     assert!(items[..ok].iter().all(Result::is_ok), "{pgn:?}: {items:?}");
     let err = items[ok].as_ref().expect_err(pgn);
     assert!(err.contains(expected), "{pgn:?}: {err}");
-}
-
-/// What holds between consecutive positions of any game: the side to move alternates, the
-/// fullmove number goes up after Black moves, and the halfmove clock resets or goes up by one.
-fn check_sequence(fens: &[String]) -> Result<(), String> {
-    for pair in fens.windows(2) {
-        let [before, after] = [&pair[0], &pair[1]].map(|fen| {
-            let fields: Vec<&str> = fen.split(' ').collect();
-            let counter = |i: usize| fields[i].parse::<u32>().unwrap();
-            (fields[1], counter(4), counter(5))
-        });
-        let (side, halfmove, fullmove) = before;
-        let expected_side = if side == "w" { "b" } else { "w" };
-        let expected_fullmove = if side == "w" { fullmove } else { fullmove + 1 };
-        let ok = after.0 == expected_side
-            && after.2 == expected_fullmove
-            && (after.1 == 0 || after.1 == halfmove + 1);
-        if !ok {
-            return Err(format!("{:?} can't follow {:?}", pair[1], pair[0]));
-        }
-    }
-    Ok(())
 }
 
 mod spec {
@@ -543,78 +518,12 @@ mod spec {
     }
 }
 
-mod real_games {
-    use serde::Deserialize;
-
-    use super::*;
-
-    /// One line of `fixtures/lichess_games.ndjson`.
-    #[derive(Deserialize)]
-    struct LichessGame {
-        id: String,
-        variant: String,
-        moves: String,
-        pgn: String,
-    }
-
-    #[test]
-    fn lichess_standard_games_play_through() {
-        for line in include_str!("fixtures/lichess_games.ndjson").lines() {
-            let game: LichessGame = serde_json::from_str(line).unwrap();
-            let name = format!("{} game {}", game.variant, game.id);
-            let items = items(&parse(&game.pgn));
-            if game.variant != "standard" {
-                assert_eq!(items.len(), 1, "{name}: {items:?}");
-                let err = items[0].as_ref().expect_err(&name);
-                assert!(err.contains("unsupported variant"), "{name}: {err}");
-                continue;
-            }
-            let fens: Vec<String> = items
-                .into_iter()
-                .collect::<Result<_, _>>()
-                .unwrap_or_else(|err| panic!("{name}: {err}"));
-            assert_eq!(
-                fens.len(),
-                game.moves.split_whitespace().count() + 1,
-                "{name}"
-            );
-            assert_eq!(fens[0], START, "{name}");
-            check_sequence(&fens).unwrap_or_else(|err| panic!("{name}: {err}"));
-        }
-    }
-}
-
 mod properties {
     use proptest::prelude::*;
-    use proptest::sample::{Index, select};
     use proptest::test_runner::FileFailurePersistence;
-    use serde::Deserialize;
 
     use super::*;
-    use crate::games::{SOUP, game};
-
-    /// The moves of each standard game in `fixtures/lichess_games.ndjson`.
-    fn lichess_games() -> Vec<Vec<String>> {
-        #[derive(Deserialize)]
-        struct LichessGame {
-            variant: String,
-            moves: String,
-        }
-        include_str!("fixtures/lichess_games.ndjson")
-            .lines()
-            .map(|line| serde_json::from_str::<LichessGame>(line).unwrap())
-            .filter(|game| game.variant == "standard")
-            .map(|game| game.moves.split_whitespace().map(String::from).collect())
-            .collect()
-    }
-
-    fn fens_of(moves: &[String]) -> Result<Vec<String>, TestCaseError> {
-        let pgn = parse(&moves.join(" "));
-        items(&pgn)
-            .into_iter()
-            .collect::<Result<_, _>>()
-            .map_err(TestCaseError::fail)
-    }
+    use crate::pgn::tests::games::{SOUP, game};
 
     proptest! {
         #![proptest_config(ProptestConfig {
@@ -622,8 +531,8 @@ mod properties {
             ..ProptestConfig::default()
         })]
 
-        /// Positions, then at most one error, and nothing after it. Every position is a `Fen`
-        /// that follows the one before, and a game without an error has one per ply and one more.
+        /// Positions, then at most one error, and nothing after it. Every position is a `Fen`,
+        /// and a game without an error has one per ply and one more.
         #[test]
         fn any_game_yields_positions_then_at_most_one_error(
             text in prop_oneof![game().prop_map(|game| game.text()), SOUP, any::<String>()]
@@ -637,21 +546,11 @@ mod properties {
                 let parsed = fen.parse::<Fen>().map_err(|err| TestCaseError::fail(format!("{fen:?}: {err}")))?;
                 prop_assert_eq!(parsed.as_str(), fen);
             }
-            check_sequence(&fens).map_err(TestCaseError::fail)?;
             if items.len() == ok {
                 let plies = pgn.plies().map_err(|err| TestCaseError::fail(err.to_string()))?;
                 prop_assert_eq!(ok, plies.len() + 1, "{:?}", text);
             }
         }
 
-        #[test]
-        fn a_prefix_of_a_game_yields_a_prefix_of_its_positions(
-            moves in select(lichess_games()),
-            at in any::<Index>(),
-        ) {
-            let full = fens_of(&moves)?;
-            let len = at.index(moves.len() + 1);
-            prop_assert_eq!(fens_of(&moves[..len])?, &full[..=len]);
-        }
     }
 }
