@@ -1,5 +1,4 @@
 use anyhow::{Context, Result, anyhow};
-use piglin::Pgn;
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
@@ -101,7 +100,7 @@ impl GameSource for ChessCom {
 
     fn fetch(&self, batch: &ChessComBatch) -> Result<Vec<Game>> {
         let response: MonthResponse = self.get_json(&batch.url)?;
-        Ok(games_from_month(response))
+        games_from_month(response)
     }
 }
 
@@ -165,17 +164,22 @@ fn parse_archive_month(url: &str) -> Result<YearMonth> {
     Ok(YearMonth { year, month })
 }
 
-fn games_from_month(response: MonthResponse) -> Vec<Game> {
+/// Games without a pgn are skipped. A pgn that doesn't parse fails the month.
+fn games_from_month(response: MonthResponse) -> Result<Vec<Game>> {
     response
         .games
         .into_iter()
-        .filter_map(|g| {
-            Some(Game {
+        .filter_map(|g| Some((g.uuid, g.pgn?)))
+        .map(|(uuid, pgn)| {
+            let pgn = pgn
+                .parse()
+                .with_context(|| format!("chess.com game {uuid}"))?;
+            Ok(Game {
                 id: GameId {
                     source: SourceKind::ChessCom,
-                    external_id: g.uuid,
+                    external_id: uuid,
                 },
-                pgn: Pgn(g.pgn?),
+                pgn,
             })
         })
         .collect()
@@ -245,19 +249,24 @@ mod tests {
         );
     }
 
-    /// `month_json` is chess.com's month response; `expected` is `(uuid, pgn)` per game.
-    #[track_caller]
-    fn check_games(month_json: &str, expected: &[(&str, &str)]) {
+    /// Fetches the one month whose response is `month_json`.
+    fn fetch_month(month_json: &str) -> Result<Vec<Game>> {
         let archive = format!("{API_BASE}/player/someone/games/2024/03");
         let source = ChessCom::fake([
             (archives_url("someone"), archives_json(&[&archive])),
             (archive, month_json.to_string()),
         ]);
         let batches = source.batches(&query("someone", None)).unwrap();
-        let games = source.fetch(&batches[0]).unwrap();
+        source.fetch(&batches[0])
+    }
+
+    /// `month_json` is chess.com's month response; `expected` is `(uuid, pgn)` per game.
+    #[track_caller]
+    fn check_games(month_json: &str, expected: &[(&str, &str)]) {
+        let games = fetch_month(month_json).unwrap();
         let actual: Vec<(&str, &str)> = games
             .iter()
-            .map(|g| (g.id.external_id.as_str(), g.pgn.0.as_str()))
+            .map(|g| (g.id.external_id.as_str(), g.pgn.as_str()))
             .collect();
         assert_eq!(actual, expected);
     }
@@ -337,6 +346,20 @@ mod tests {
     }
 
     #[test]
+    fn a_pgn_that_does_not_parse_fails_the_fetch() {
+        let err = fetch_month(
+            r#"{"games": [
+                {"uuid": "u1", "pgn": "1. e4 e5"},
+                {"uuid": "u2", "pgn": "1. e4 { never closed"}
+            ]}"#,
+        )
+        .expect_err("u2 doesn't parse");
+        let err = format!("{err:#}");
+        assert!(err.contains("chess.com game u2"), "{err}");
+        assert!(err.contains("unterminated comment"), "{err}");
+    }
+
+    #[test]
     fn syncing_two_users_keeps_both() {
         let erik = format!("{API_BASE}/player/erik/games/2024/03");
         let hikaru = format!("{API_BASE}/player/hikaru/games/2024/03");
@@ -375,7 +398,7 @@ mod tests {
 
         let games = source.fetch(&batches[0]).unwrap();
         assert!(!games.is_empty());
-        assert!(games.iter().all(|g| !g.pgn.0.is_empty()));
+        assert!(games.iter().all(|g| !g.pgn.as_str().is_empty()));
         for game in &games {
             if let Err(err) = game.pgn.plies() {
                 panic!("game {}: {err}", game.id.external_id);

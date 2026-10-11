@@ -1,6 +1,10 @@
-//! The contract of `Pgn::plies`: which parts of a PGN become plies, and which inputs are errors.
+//! The contract of `Pgn::plies`: which parts of a PGN become plies. Only a move that isn't SAN
+//! is an error; text that isn't well-formed PGN never becomes a `Pgn`.
 
 use piglin::{Pgn, Ply};
+
+#[path = "support/games.rs"]
+mod games;
 
 fn texts(plies: &[Ply]) -> Vec<&str> {
     plies.iter().map(Ply::as_str).collect()
@@ -9,7 +13,7 @@ fn texts(plies: &[Ply]) -> Vec<&str> {
 /// `expected` lists the plies separated by spaces, e.g. `"e4 e5"`.
 #[track_caller]
 fn check(pgn: &str, expected: &str) {
-    let plies = Pgn(pgn.to_string()).plies().expect(pgn);
+    let plies = parse(pgn).plies().expect(pgn);
     let expected: Vec<&str> = expected.split_whitespace().collect();
     assert_eq!(texts(&plies), expected, "{pgn:?}");
 }
@@ -17,8 +21,13 @@ fn check(pgn: &str, expected: &str) {
 /// `expected` is text the error message must contain.
 #[track_caller]
 fn check_err(pgn: &str, expected: &str) {
-    let err = Pgn(pgn.to_string()).plies().expect_err(pgn);
+    let err = parse(pgn).plies().expect_err(pgn);
     assert!(err.to_string().contains(expected), "{pgn:?}: {err}");
+}
+
+#[track_caller]
+fn parse(pgn: &str) -> Pgn {
+    pgn.parse().unwrap_or_else(|err| panic!("{pgn:?}: {err}"))
 }
 
 mod spec {
@@ -137,18 +146,6 @@ mod spec {
     }
 
     #[test]
-    fn malformed_movetext_is_an_error() {
-        check_err("1. e4 { never closed", "comment");
-        check_err("1. e4 (1. d4", "variation");
-        check_err("1. e4 (1. d4 (1. c4) d5", "variation");
-        check_err("[Event \"x\"", "tag");
-        check_err("[Event \"x] 1. e4", "tag");
-        check_err("1. e4 ) e5", "unmatched )");
-        check_err("1. e4 } e5", "unmatched }");
-        check_err("1. e4 ] e5", "unmatched ]");
-    }
-
-    #[test]
     fn a_word_that_is_not_san_is_an_error() {
         check_err("1. e4 Nz9", "Nz9");
         check_err("1. e4 hello", "hello");
@@ -176,7 +173,7 @@ mod real_games {
     fn lichess_plies_match_lichess_move_lists() {
         for line in include_str!("fixtures/lichess_games.ndjson").lines() {
             let game: LichessGame = serde_json::from_str(line).unwrap();
-            let plies = Pgn(game.pgn)
+            let plies = parse(&game.pgn)
                 .plies()
                 .unwrap_or_else(|err| panic!("{} game {}: {err}", game.variant, game.id));
             let expected: Vec<&str> = game.moves.split_whitespace().collect();
@@ -187,154 +184,10 @@ mod real_games {
 
 mod properties {
     use proptest::prelude::*;
-    use proptest::strategy::Union;
     use proptest::test_runner::FileFailurePersistence;
 
     use super::*;
-
-    /// A move as SAN writes it, e.g. `Nbxd7+`, `e8=Q#` or `O-O-O`.
-    const SAN: &str = "([KQRBN][a-h]?[1-8]?x?[a-h][1-8]\
-        |([a-h]|axb|bxc|cxd|dxe|exf|fxg|gxh|hxg|gxf|fxe|exd|dxc|cxb|bxa)([2-7]|[18]=[QRBN])\
-        |O-O(-O)?)[+#]?";
-    const GLYPH: &str = r"!|\?|!!|\?\?|!\?|\?!";
-    const MOVE_NUMBER: &str = r"[1-9][0-9]{0,2}\.{0,3}";
-    /// A move number written against its move, as in `12.e4`.
-    const NUMBER_PREFIX: &str = r"[1-9][0-9]{0,2}\.{1,3}";
-    const NAG: &str = r"\$[0-9]{1,3}";
-    const RESULT: &str = r"1-0|0-1|1/2-1/2|\*";
-    /// Comment text may hold anything but `}`. These are the characters that could confuse a
-    /// tokenizer.
-    const COMMENT: &str = r#"\{[ a-h1-8KQRBNOx=+#.\-(){\[\];$!?"\\→\t\r\n]{0,20}\}"#;
-    const LINE_COMMENT: &str = r#";[ a-h1-8KQRBNOx=+#.\-(){}\[\];$!?"\\→\t]{0,20}\n"#;
-    const TAG_NAME: &str = "[A-Z][A-Za-z]{0,8}";
-    const TAG_VALUE: &str = r#"[ a-h1-8KQRBNOx=+#.\-(){}\[\];$!?"\\→]{0,20}"#;
-    /// Whitespace that may come before any piece of the PGN.
-    const SPACE: &str = "[ \t\r\n]{0,2}";
-    /// Characters that mean something in PGN, so that delimiters meet often.
-    const SOUP: &str = r#"[\[\]{}()$;.!?*0-9a-hKQRBNOx=+#/@\-"\\→ \t\r\n]{0,60}"#;
-
-    /// A piece of PGN text. Words (moves, move numbers, glyphs, NAGs and results) need
-    /// whitespace between them. Comments, variations and tags may touch anything.
-    #[derive(Debug, Clone)]
-    struct Piece {
-        space: String,
-        text: String,
-        word: bool,
-    }
-
-    fn word(text: String) -> Piece {
-        Piece {
-            space: String::new(),
-            text,
-            word: true,
-        }
-    }
-
-    fn group(text: String) -> Piece {
-        Piece {
-            space: String::new(),
-            text,
-            word: false,
-        }
-    }
-
-    fn spaced(piece: impl Strategy<Value = Piece>) -> impl Strategy<Value = Piece> {
-        (SPACE, piece).prop_map(|(space, piece)| Piece { space, ..piece })
-    }
-
-    fn render(pieces: &[Piece]) -> String {
-        let mut text = String::new();
-        let mut after_word = false;
-        for piece in pieces {
-            let needs_space = after_word && piece.word && piece.space.is_empty();
-            text += if needs_space {
-                " "
-            } else {
-                piece.space.as_str()
-            };
-            text += &piece.text;
-            after_word = piece.word;
-        }
-        text
-    }
-
-    /// The ply a move must give, and the move as written: maybe with its number in front
-    /// (`12.e4`) and a glyph behind (`e4!?`).
-    fn mv() -> impl Strategy<Value = (String, Piece)> {
-        (
-            SPACE,
-            prop::option::of(NUMBER_PREFIX),
-            SAN,
-            prop::option::of(GLYPH),
-        )
-            .prop_map(|(space, number, san, glyph)| {
-                let number = number.unwrap_or_default();
-                let glyph = glyph.unwrap_or_default();
-                let text = format!("{number}{san}{glyph}");
-                let piece = Piece {
-                    space,
-                    text,
-                    word: true,
-                };
-                (san, piece)
-            })
-    }
-
-    /// Text that adds no plies. Variations nest up to `depth` deep.
-    fn filler(depth: u32) -> BoxedStrategy<Piece> {
-        let mut kinds = vec![
-            spaced(MOVE_NUMBER.prop_map(word)).boxed(),
-            spaced(GLYPH.prop_map(word)).boxed(),
-            spaced(NAG.prop_map(word)).boxed(),
-            spaced(COMMENT.prop_map(group)).boxed(),
-            spaced(LINE_COMMENT.prop_map(group)).boxed(),
-        ];
-        if depth > 0 {
-            let variation =
-                movetext(depth - 1).prop_map(|(_, pieces)| group(format!("({})", render(&pieces))));
-            kinds.push(spaced(variation).boxed());
-        }
-        Union::new(kinds).boxed()
-    }
-
-    /// Moves, and pieces that spell them out with filler around each move.
-    fn movetext(depth: u32) -> BoxedStrategy<(Vec<String>, Vec<Piece>)> {
-        let max_plies = 4 + 4 * depth as usize;
-        let ply = (prop::collection::vec(filler(depth), 0..3), mv());
-        (
-            prop::collection::vec(ply, 0..max_plies),
-            prop::collection::vec(filler(depth), 0..3),
-        )
-            .prop_map(|(plies, tail)| {
-                let mut moves = Vec::new();
-                let mut pieces = Vec::new();
-                for (fillers, (san, piece)) in plies {
-                    pieces.extend(fillers);
-                    pieces.push(piece);
-                    moves.push(san);
-                }
-                pieces.extend(tail);
-                (moves, pieces)
-            })
-            .boxed()
-    }
-
-    /// A game's moves, and a PGN with tags, filler around the moves and maybe a result.
-    fn game() -> impl Strategy<Value = (Vec<String>, String)> {
-        let tag = (TAG_NAME, TAG_VALUE).prop_map(|(name, value)| {
-            let value = value.replace('\\', r"\\").replace('"', r#"\""#);
-            group(format!("[{name} \"{value}\"]"))
-        });
-        (
-            prop::collection::vec(spaced(tag), 0..4),
-            movetext(2),
-            prop::option::of(spaced(RESULT.prop_map(word))),
-        )
-            .prop_map(|(tags, (moves, body), result)| {
-                let pieces: Vec<Piece> = tags.into_iter().chain(body).chain(result).collect();
-                (moves, render(&pieces))
-            })
-    }
+    use crate::games::{SOUP, game};
 
     /// What the contract promises about every ply, whatever the input.
     fn check_ply(input: &str, ply: &str) -> Result<(), TestCaseError> {
@@ -364,14 +217,15 @@ mod properties {
         })]
 
         #[test]
-        fn generated_games_yield_their_moves((moves, pgn) in game()) {
-            let plies = Pgn(pgn).plies().map_err(|err| TestCaseError::fail(err.to_string()))?;
-            prop_assert_eq!(texts(&plies), moves);
+        fn generated_games_yield_their_moves(game in game()) {
+            let fail = |err: anyhow::Error| TestCaseError::fail(err.to_string());
+            let plies = game.text().parse::<Pgn>().map_err(fail)?.plies().map_err(fail)?;
+            prop_assert_eq!(texts(&plies), game.moves);
         }
 
         #[test]
         fn any_text_yields_moves_or_an_error(text in prop_oneof![SOUP, any::<String>()]) {
-            if let Ok(plies) = Pgn(text.clone()).plies() {
+            if let Ok(plies) = text.parse::<Pgn>().and_then(|pgn| pgn.plies()) {
                 for ply in texts(&plies) {
                     check_ply(&text, ply)?;
                 }

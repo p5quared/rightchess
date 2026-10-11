@@ -1,8 +1,6 @@
 //! Behavior every storage backend must share. A backend's test module runs it with
 //! `store_contract_tests!(make_store)`.
 
-use piglin::Pgn;
-
 use crate::app::game_reader::GameReader;
 use crate::app::sync::{BatchKey, SyncStore};
 use crate::domain::{Game, GameId, SourceKind};
@@ -40,12 +38,13 @@ fn key(id: &str) -> BatchKey {
 
 /// The pgn is derived from the id so reads also check that pgns round-trip.
 fn game(id: &str) -> Game {
+    let site = id.replace('\\', r"\\").replace('"', r#"\""#);
     Game {
         id: GameId {
             source: SourceKind::ChessCom,
             external_id: id.to_string(),
         },
-        pgn: Pgn(format!("[Site \"{id}\"]\n\n1. e4 e5 *")),
+        pgn: format!("[Site \"{site}\"]\n\n1. e4 e5 *").parse().unwrap(),
     }
 }
 

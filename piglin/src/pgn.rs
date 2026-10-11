@@ -1,20 +1,27 @@
-use std::iter;
 use std::ops::ControlFlow;
+use std::str::FromStr;
+use std::{fmt, iter};
 
-use anyhow::{Context, Result, anyhow, ensure};
+use anyhow::{Context, Result, anyhow, bail, ensure};
 
 use crate::Ply;
 
+/// One game in PGN, as written. Only well-formed text is a `Pgn`: comments, variations and tags
+/// are closed, tags are `[Name "value"]` pairs before the movetext, and only comments follow
+/// the result. Moves aren't checked; `plies` does that.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Pgn(pub String);
+pub struct Pgn(String);
 
 impl Pgn {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
     /// The mainline's plies, in order. Each is a move as written minus trailing glyphs; tags,
     /// comments, variations, NAGs, move numbers and the result are skipped. Moves aren't checked
-    /// for legality. Fails on an unterminated comment, tag or variation, an unmatched `)`, `}`
-    /// or `]`, or a move that isn't SAN.
+    /// for legality. Fails only on a move that isn't SAN.
     pub fn plies(&self) -> Result<Vec<Ply>> {
-        mainline(lexemes(&self.0))?
+        mainline(&self.0)?
             .into_iter()
             .filter_map(move_text)
             .map(str::parse)
@@ -22,26 +29,106 @@ impl Pgn {
     }
 }
 
-/// The lexemes outside variations.
-fn mainline<'a>(mut lexemes: impl Iterator<Item = Result<&'a str>>) -> Result<Vec<&'a str>> {
-    let (depth, kept) = lexemes.try_fold(
-        (0u32, Vec::new()),
-        |(depth, mut kept), lexeme| -> Result<_> {
-            let depth = match lexeme? {
-                "(" => depth + 1,
-                ")" => depth.checked_sub(1).context("unmatched )")?,
-                lexeme => {
-                    if depth == 0 {
-                        kept.push(lexeme);
-                    }
-                    depth
-                }
-            };
-            Ok((depth, kept))
-        },
-    )?;
+impl FromStr for Pgn {
+    type Err = anyhow::Error;
+
+    fn from_str(text: &str) -> Result<Self> {
+        mainline(text)?;
+        Ok(Pgn(text.to_string()))
+    }
+}
+
+impl fmt::Display for Pgn {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+const RESULTS: [&str; 4] = ["1-0", "0-1", "1/2-1/2", "*"];
+
+/// The part of a game the mainline has reached.
+enum Section {
+    Tags,
+    Movetext,
+    AfterResult,
+}
+
+/// The words outside comments, tags and variations: moves, move numbers, glyphs, NAGs and the
+/// result. Fails unless `text` is one game: delimiters close, tags are well-formed pairs before
+/// the movetext, and only comments follow the result.
+fn mainline(text: &str) -> Result<Vec<&str>> {
+    let mut words = Vec::new();
+    let mut section = Section::Tags;
+    let mut depth = 0u32;
+    for lexeme in lexemes(text) {
+        let lexeme = lexeme?;
+        if depth > 0 {
+            match lexeme {
+                "(" => depth += 1,
+                ")" => depth -= 1,
+                _ => {}
+            }
+            continue;
+        }
+        if lexeme.starts_with(['{', ';']) {
+            continue;
+        }
+        ensure!(
+            !matches!(section, Section::AfterResult),
+            "{lexeme} after the result"
+        );
+        if lexeme.starts_with('[') {
+            ensure!(is_tag_pair(lexeme), "malformed tag {lexeme}");
+            ensure!(
+                matches!(section, Section::Tags),
+                "{lexeme} after the movetext"
+            );
+            continue;
+        }
+        match lexeme {
+            ")" => bail!("unmatched )"),
+            "(" => depth = 1,
+            word => words.push(word),
+        }
+        section = match RESULTS.contains(&lexeme) {
+            true => Section::AfterResult,
+            false => Section::Movetext,
+        };
+    }
     ensure!(depth == 0, "unterminated variation");
-    Ok(kept)
+    Ok(words)
+}
+
+/// Whether `tag` is a pair like `[Event "x"]`: a name of letters, digits and `_` that doesn't
+/// start with `_`, then one quoted value, with optional whitespace around each.
+fn is_tag_pair(tag: &str) -> bool {
+    let Some(inner) = tag.strip_prefix('[').and_then(|tag| tag.strip_suffix(']')) else {
+        return false;
+    };
+    let inner = inner.trim_start();
+    let name_len = inner
+        .find(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+        .unwrap_or(inner.len());
+    let (name, rest) = inner.split_at(name_len);
+    let Some(value) = rest.trim_start().strip_prefix('"') else {
+        return false;
+    };
+    let after_value = quoted_len(value).map(|len| &value[len..]);
+    !name.is_empty()
+        && !name.starts_with('_')
+        && after_value.is_some_and(|rest| rest.trim().is_empty())
+}
+
+/// The length of a quoted value up to and including its closing `"`, where `\"` and `\\` are
+/// escapes. `value` starts after the opening `"`.
+fn quoted_len(value: &str) -> Option<usize> {
+    let mut escaped = false;
+    let (close, _) = value.char_indices().find(|&(_, c)| {
+        let closes = !escaped && c == '"';
+        escaped = !escaped && c == '\\';
+        closes
+    })?;
+    Some(close + 1)
 }
 
 /// The comments, tags, NAGs, parentheses and words of `text`, ending at the first error.
@@ -94,10 +181,10 @@ fn tag_len(text: &str) -> Result<usize> {
         .context("unterminated tag")
 }
 
-/// The move in a lexeme without its move number or glyphs, or None if the lexeme holds no move:
-/// a comment, tag, NAG, move number, glyph or result.
-fn move_text(lexeme: &str) -> Option<&str> {
-    let token = lexeme.trim_end_matches(['!', '?']);
+/// The move in a word without its move number or glyphs, or None if the word holds no move: a
+/// NAG, move number, glyph or result.
+fn move_text(word: &str) -> Option<&str> {
+    let token = word.trim_end_matches(['!', '?']);
     // A move number is digits and periods up to the last period, as in `12.` or `12...e4`.
     let number_end = token
         .char_indices()
@@ -106,9 +193,9 @@ fn move_text(lexeme: &str) -> Option<&str> {
         .last()
         .map_or(0, |(dot, _)| dot + 1);
     let san = &token[number_end..];
-    let is_comment_tag_or_nag = lexeme.starts_with(['{', ';', '[', '$']);
-    let is_result = ["1-0", "0-1", "1/2-1/2", "*"].contains(&san);
+    let is_nag = word.starts_with('$');
+    let is_result = RESULTS.contains(&san);
     // Also true when nothing is left, as for a glyph on its own.
     let is_number = san.chars().all(|c| c.is_ascii_digit());
-    (!is_comment_tag_or_nag && !is_result && !is_number).then_some(san)
+    (!is_nag && !is_result && !is_number).then_some(san)
 }

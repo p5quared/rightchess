@@ -88,8 +88,6 @@ pub fn sync<S: GameSource>(
 mod tests {
     use std::cell::RefCell;
 
-    use piglin::Pgn;
-
     use super::*;
     use crate::adapters::MemoryStore;
     use crate::app::game_reader::GameReader;
@@ -167,7 +165,7 @@ mod tests {
                 source: SourceKind::ChessCom,
                 external_id: id.to_string(),
             },
-            pgn: Pgn(String::new()),
+            pgn: "".parse().unwrap(),
         }
     }
 
