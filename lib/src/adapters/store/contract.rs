@@ -1,9 +1,11 @@
 //! Behavior every storage backend must share. A backend's test module runs it with
 //! `store_contract_tests!(make_store)`.
 
+use piglin::Pgn;
+
 use crate::app::game_reader::GameReader;
 use crate::app::sync::{BatchKey, SyncStore};
-use crate::domain::{Game, GameId, Pgn, SourceKind};
+use crate::domain::{Game, GameId, SourceKind};
 
 macro_rules! store_contract_tests {
     ($make:expr) => {

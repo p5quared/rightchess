@@ -1,3 +1,3 @@
 mod game;
 
-pub use game::{Game, GameId, Pgn, Ply, SourceKind, YearMonth};
+pub use game::{Game, GameId, SourceKind, YearMonth};

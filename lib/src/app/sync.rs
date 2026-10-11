@@ -88,10 +88,12 @@ pub fn sync<S: GameSource>(
 mod tests {
     use std::cell::RefCell;
 
+    use piglin::Pgn;
+
     use super::*;
     use crate::adapters::MemoryStore;
     use crate::app::game_reader::GameReader;
-    use crate::domain::{GameId, Pgn, SourceKind};
+    use crate::domain::{GameId, SourceKind};
 
     #[derive(Clone)]
     struct FakeBatch {

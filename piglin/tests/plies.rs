@@ -1,6 +1,6 @@
 //! The contract of `Pgn::plies`: which parts of a PGN become plies, and which inputs are errors.
 
-use rightchess::{Pgn, Ply};
+use piglin::{Pgn, Ply};
 
 fn texts(plies: &[Ply]) -> Vec<&str> {
     plies.iter().map(|ply| ply.0.as_str()).collect()

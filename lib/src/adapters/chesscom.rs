@@ -1,9 +1,10 @@
 use anyhow::{Context, Result, anyhow};
+use piglin::Pgn;
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
 use crate::app::sync::{Batch, BatchKey, GameSource, SourceQuery};
-use crate::domain::{Game, GameId, Pgn, SourceKind, YearMonth};
+use crate::domain::{Game, GameId, SourceKind, YearMonth};
 
 const API_BASE: &str = "https://api.chess.com/pub";
 /// Monthly archives of very active players can exceed ureq's 10MB default.
