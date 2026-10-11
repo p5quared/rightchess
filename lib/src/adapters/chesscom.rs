@@ -375,5 +375,10 @@ mod tests {
         let games = source.fetch(&batches[0]).unwrap();
         assert!(!games.is_empty());
         assert!(games.iter().all(|g| !g.pgn.0.is_empty()));
+        for game in &games {
+            if let Err(err) = game.pgn.plies() {
+                panic!("game {}: {err}", game.id.external_id);
+            }
+        }
     }
 }
