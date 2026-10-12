@@ -9,11 +9,20 @@ const STARTING: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
 /// e3 0 1`. Only well-formed text is a `Fen`: six fields, eight ranks of eight squares, castling
 /// rights in `KQkq` order, an en passant square behind the side that just moved, and counters
 /// that fit a `u32`. Whether the position could arise isn't checked.
+///
+/// FEN (Forsyth–Edwards Notation) writes a position as one line of six fields: the pieces rank
+/// by rank (row by row, from Black's side), uppercase for White and digits for runs of empty
+/// squares; the side to move, `w` or `b`; castling rights, which castlings are still allowed,
+/// `K`/`Q` for White's king or queen side and `k`/`q` for Black's; the en passant square, which a
+/// pawn just skipped by moving two squares and where an enemy pawn beside it may capture it on
+/// the next move only; and two counters, the halfmove clock (plies since the last capture or
+/// pawn move) and the fullmove number (which goes up after each Black move).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Fen(pub(crate) String);
 
 impl Fen {
     #[must_use]
+    #[expect(clippy::missing_panics_doc, reason = "STARTING is a valid FEN")]
     pub fn starting() -> Fen {
         str::parse(STARTING).expect("STARTING FEN should parse")
     }
@@ -39,7 +48,7 @@ impl fmt::Display for Fen {
     }
 }
 
-/// Fails with the reason `text` isn't a FEN.
+/// Fails with the reason `text` isn't a [FEN](Fen).
 fn check(text: &str) -> Result<()> {
     let fields: Vec<&str> = text.split(' ').collect();
     let [board, side, castling, en_passant, halfmove, fullmove] = fields[..] else {
@@ -73,7 +82,8 @@ fn check(text: &str) -> Result<()> {
 }
 
 /// The squares a rank of the board spans, or None if it isn't pieces and digits for runs of
-/// empty squares, never two digits in a row.
+/// empty squares, never two digits in a row. A rank is a row of the board, e.g. `4P3` is four
+/// empty squares, a white pawn, then three empty squares.
 fn rank_len(rank: &str) -> Option<u32> {
     let mut len = 0;
     let mut after_digit = false;
@@ -88,7 +98,9 @@ fn rank_len(rank: &str) -> Option<u32> {
     Some(len)
 }
 
-/// Whether `rights` is `-`, or some of `KQkq` in that order.
+/// Whether `rights` is `-`, or some of `KQkq` in that order. These are castling rights, which
+/// castlings are still allowed: `K`/`Q` for White's king or queen side, `k`/`q` for Black's, `-`
+/// for none.
 fn is_castling(rights: &str) -> bool {
     let mut rest = "KQkq";
     let in_order = rights.chars().all(|c| match rest.find(c) {
@@ -105,7 +117,9 @@ fn is_square_on(square: &str, rank: char) -> bool {
     matches!(square.as_bytes(), [b'a'..=b'h', r] if *r as char == rank)
 }
 
-/// A counter: digits without leading zeros that fit a `u32`.
+/// A counter: digits without leading zeros that fit a `u32`. A [FEN](Fen) ends with two
+/// counters, the halfmove clock (plies since the last capture or pawn move) and the fullmove
+/// number.
 fn counter(text: &str) -> Result<u32> {
     let digits = !text.is_empty() && text.bytes().all(|b| b.is_ascii_digit());
     ensure!(
@@ -116,10 +130,11 @@ fn counter(text: &str) -> Result<u32> {
         .map_err(|_| anyhow!("counter {text} doesn't fit a u32"))
 }
 
-/// The contract of `Fen`: which text is a position in FEN. Its structure is checked: six fields
-/// split by single spaces, eight ranks of eight squares, castling rights in `KQkq` order, an en
-/// passant square behind the side that just moved, and counters that fit a `u32`. Whether the
-/// position could arise isn't; playing from it checks that.
+/// The contract of [`Fen`]: which text is a position in [FEN](Fen). Its structure is checked:
+/// six fields split by single spaces, eight [ranks](Fen) of eight squares,
+/// [castling rights](Fen) in `KQkq` order, an [en passant square](Fen) behind the side that just
+/// moved, and [counters](Fen) that fit a `u32`. Whether the position could arise isn't; playing
+/// from it checks that.
 #[cfg(test)]
 pub(crate) mod tests {
     use crate::chess::Fen;
@@ -314,11 +329,12 @@ pub(crate) mod tests {
 
         const PIECE: &str = "[pnbrqkPNBRQK]";
         /// How many digits may follow a counter's first one when generating: few enough to fit a
-        /// `u32`.
+        /// `u32`. The counters are a [FEN](Fen)'s last two fields, the halfmove clock and the
+        /// fullmove number.
         const MORE_DIGITS: &str = "{0,8}";
 
         /// A rank of `n` squares that doesn't start with a digit if `after_digit`: digits for runs of
-        /// empty squares, never two in a row.
+        /// empty squares, never two in a row. A rank is a row of the board, e.g. `4P3`.
         fn rank(n: u32, after_digit: bool) -> String {
             if n == 0 {
                 return String::new();
@@ -330,8 +346,9 @@ pub(crate) mod tests {
             format!("({})", ways.join("|"))
         }
 
-        /// FEN as a regex, with `more_digits` after each counter's first digit: the oracle the
-        /// parser must agree with, apart from the `u32` bound. The fullmove number isn't 0.
+        /// [FEN](Fen) as a regex, with `more_digits` after each counter's first digit: the oracle
+        /// the parser must agree with, apart from the `u32` bound. The fullmove number, the last
+        /// field, isn't 0.
         fn fen(more_digits: &str) -> String {
             let rank = rank(8, false);
             let board = format!("{rank}(/{rank}){{7}}");
@@ -341,10 +358,10 @@ pub(crate) mod tests {
             )
         }
 
-        /// Characters that FEN uses, so that near misses come up often.
+        /// Characters that [FEN](Fen) uses, so that near misses come up often.
         const SOUP: &str = r"[pnbrqkPNBRQKXx0-9/ wbWB\-a-iA-H.\t]";
 
-        /// A FEN with one character added, removed or replaced.
+        /// A [FEN](Fen) with one character added, removed or replaced.
         fn near_miss() -> impl Strategy<Value = String> {
             let edit = prop_oneof![
                 (any::<Index>(), SOUP).prop_map(|(at, c)| (at, 0, c)),
@@ -360,7 +377,8 @@ pub(crate) mod tests {
             })
         }
 
-        /// Whether `text` is a FEN: it matches the regex, and its counters fit a `u32`.
+        /// Whether `text` is a [FEN](Fen): it matches the regex, and its counters (the halfmove
+        /// clock and fullmove number, the last two fields) fit a `u32`.
         fn is_fen(text: &str) -> bool {
             let oracle = Regex::new(&format!(r"\A(?:{})\z", fen("*"))).unwrap();
             oracle.is_match(text)
@@ -374,7 +392,8 @@ pub(crate) mod tests {
             proptest::string::string_regex(regex).unwrap()
         }
 
-        /// Any FEN whose counters fit a `u32`.
+        /// Any [FEN](Fen) whose counters (the halfmove clock and fullmove number, the last two
+        /// fields) fit a `u32`.
         pub(crate) fn fens() -> impl Strategy<Value = Fen> {
             string_regex(&fen(MORE_DIGITS)).prop_map(|text| text.parse().unwrap())
         }

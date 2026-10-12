@@ -10,6 +10,15 @@ use crate::chess::{Fen, Ply};
 /// One game in PGN, as written. Only well-formed text is a `Pgn`: comments, variations and tags
 /// are closed, tags are `[Name "value"]` pairs before the movetext, and only comments follow
 /// the result. Moves aren't checked; `plies` does that.
+///
+/// PGN (Portable Game Notation) is the standard text format for a game: tags, which are
+/// metadata like `[White "Carlsen"]`, then the movetext, the moves with their numbers as in
+/// `1. e4 e5 2. Nf3`, ending in a result: `1-0` (White won), `0-1`, `1/2-1/2` (a draw) or `*`
+/// (unfinished). Comments go in `{}` and variations, alternative lines that weren't played, in
+/// `()`; the mainline is the moves actually played. A move may carry a glyph, an annotation like
+/// `!` or `?!`, or a NAG (Numeric Annotation Glyph), the same as a number such as `$14`. A
+/// `[FEN]` tag starts the game from a custom position, and a `[Variant]` tag names a variant, a
+/// game with other rules such as Chess960 or Crazyhouse.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pgn(String);
 
@@ -19,9 +28,13 @@ impl Pgn {
         &self.0
     }
 
-    /// The mainline's plies, in order. Each is a move as written minus trailing glyphs; tags,
-    /// comments, variations, NAGs, move numbers and the result are skipped. Moves aren't checked
-    /// for legality. Fails only on a move that isn't SAN.
+    /// The [mainline](Pgn)'s [plies](Ply), in order. Each is a move as written minus trailing
+    /// [glyphs](Pgn); [tags](Pgn), comments, [variations](Pgn), [NAGs](Pgn), move numbers and the
+    /// result are skipped. Moves aren't checked for legality.
+    ///
+    /// # Errors
+    ///
+    /// Fails only on a move that isn't [SAN](Ply).
     pub fn plies(&self) -> Result<Vec<Ply>> {
         mainline(&self.0)?
             .words
@@ -31,10 +44,10 @@ impl Pgn {
             .collect()
     }
 
-    /// The mainline's positions: the start, then one after each ply. The start is the `[FEN]`
-    /// tag, or the standard starting position without one. Moves are played by the rules of
-    /// standard chess; other variants are an error. Yields an error naming the first ply that
-    /// can't be played, then stops.
+    /// The [mainline](Pgn)'s positions, as [FENs](Fen): the start, then one after each
+    /// [ply](Ply). The start is the [`[FEN]` tag](Pgn), or the standard starting position
+    /// without one. Moves are played by the rules of standard chess; other [variants](Pgn) are an
+    /// error. Yields an error naming the first ply that can't be played, then stops.
     pub fn fens(&self) -> impl Iterator<Item = Result<Fen>> + '_ {
         let (start, words) = match mainline(&self.0) {
             Ok(mainline) => (start(&mainline.tags), mainline.words),
@@ -71,15 +84,15 @@ impl fmt::Display for Pgn {
 
 const RESULTS: [&str; 4] = ["1-0", "0-1", "1/2-1/2", "*"];
 
-/// The part of a game the mainline has reached.
+/// The part of a game the [mainline](Pgn) has reached.
 enum Section {
     Tags,
     Movetext,
     AfterResult,
 }
 
-/// The position a game starts from: its `[FEN]` tag, or the standard starting position. Fails
-/// for variants other than standard chess.
+/// The position a game starts from: its [`[FEN]` tag](Pgn), or the standard starting position.
+/// Fails for [variants](Pgn) other than standard chess.
 fn start(tags: &[(&str, String)]) -> Result<Board> {
     let tag = |name| {
         tags.iter()
@@ -99,17 +112,17 @@ fn start(tags: &[(&str, String)]) -> Result<Board> {
     Board::from_fen(&fen)
 }
 
-/// The tags and words of a game outside comments and variations.
+/// The [tags](Pgn) and words of a game outside comments and [variations](Pgn).
 struct Mainline<'a> {
     /// Names and values, in order.
     tags: Vec<(&'a str, String)>,
-    /// Moves, move numbers, glyphs, NAGs and the result.
+    /// Moves, move numbers, [glyphs](Pgn), [NAGs](Pgn) and the [result](Pgn).
     words: Vec<&'a str>,
 }
 
-/// The tags and words outside comments and variations. Fails unless `text` is one game:
-/// delimiters close, tags are well-formed pairs before the movetext, and only comments follow
-/// the result.
+/// The [tags](Pgn) and words outside comments and [variations](Pgn). Fails unless `text` is one
+/// game: delimiters close, tags are well-formed pairs before the [movetext](Pgn), and only
+/// comments follow the [result](Pgn).
 fn mainline(text: &str) -> Result<Mainline<'_>> {
     let mut tags = Vec::new();
     let mut words = Vec::new();
@@ -146,14 +159,19 @@ fn mainline(text: &str) -> Result<Mainline<'_>> {
             "(" => depth = 1,
             word => words.push(word),
         }
-        section = if RESULTS.contains(&lexeme) { Section::AfterResult } else { Section::Movetext };
+        section = if RESULTS.contains(&lexeme) {
+            Section::AfterResult
+        } else {
+            Section::Movetext
+        };
     }
     ensure!(depth == 0, "unterminated variation");
     Ok(Mainline { tags, words })
 }
 
-/// The name and unescaped value of a pair like `[Event "x"]`: a name of letters, digits and `_`
-/// that doesn't start with `_`, then one quoted value, with optional whitespace around each.
+/// The name and unescaped value of a [tag](Pgn) pair like `[Event "x"]`: a name of letters, digits
+/// and `_` that doesn't start with `_`, then one quoted value, with optional whitespace around
+/// each.
 fn tag_pair(tag: &str) -> Option<(&str, String)> {
     let inner = tag.strip_prefix('[')?.strip_suffix(']')?;
     let inner = inner.trim_start();
@@ -192,7 +210,8 @@ fn quoted_len(value: &str) -> Option<usize> {
     Some(close + 1)
 }
 
-/// The comments, tags, NAGs, parentheses and words of `text`, ending at the first error.
+/// The comments, [tags](Pgn), [NAGs](Pgn), parentheses and words of `text`, ending at the first
+/// error.
 fn lexemes(text: &str) -> impl Iterator<Item = Result<&str>> {
     iter::successors(next_lexeme(text), |step| next_lexeme(step.as_ref().ok()?.1))
         .map(|step| step.map(|(lexeme, _)| lexeme))
@@ -221,7 +240,7 @@ fn next_lexeme(text: &str) -> Option<Result<(&str, &str)>> {
     Some(len.map(|len| text.split_at(len)))
 }
 
-/// The length of the tag pair `text` starts with, such as `[Event "Live Chess"]`. Its quoted
+/// The length of the [tag](Pgn) pair `text` starts with, such as `[Event "Live Chess"]`. Its quoted
 /// value may hold `]`, `\"` and `\\`.
 fn tag_len(text: &str) -> Result<usize> {
     /// Where a character is: in the tag outside its value, in the value, or after a backslash.
@@ -242,8 +261,8 @@ fn tag_len(text: &str) -> Result<usize> {
         .context("unterminated tag")
 }
 
-/// The move in a word without its move number or glyphs, or None if the word holds no move: a
-/// NAG, move number, glyph or result.
+/// The move in a word without its move number or [glyphs](Pgn), or None if the word holds no
+/// move: a [NAG](Pgn), move number, glyph or [result](Pgn).
 fn move_text(word: &str) -> Option<&str> {
     let token = word.trim_end_matches(['!', '?']);
     // A move number is digits and periods up to the last period, as in `12.` or `12...e4`.

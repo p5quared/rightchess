@@ -6,19 +6,32 @@ use crate::app::game_reader::GameReader;
 use crate::chess::{Fen, NormalizedFen};
 use crate::domain::{Eval, Game, GameId};
 
-/// Must name every setting that can change the evals, e.g. "stockfish 17.1 nodes=1000000".
+/// Must name every setting that can change the [evals](Eval), e.g. "stockfish 17.1
+/// nodes=1000000" for the Stockfish engine searching a million positions per eval.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct EvaluatorId(pub String);
 
 pub trait Evaluator {
     fn id(&self) -> EvaluatorId;
-    /// One eval per position, in order.
+    /// One [eval](Eval) per position, in order.
+    ///
+    /// # Errors
+    ///
+    /// Fails if any position can't be evaluated.
     fn evaluate(&mut self, positions: &[Fen]) -> Result<Vec<Eval>>;
 }
 
 pub trait EvalStore {
+    /// # Errors
+    ///
+    /// Fails if the store can't be read.
     fn eval(&self, evaluator: &EvaluatorId, position: &NormalizedFen) -> Result<Option<Eval>>;
-    /// Saves every eval or none. Replaces evals already stored under the same key.
+    /// Saves every [eval](Eval) or none. Replaces evals already stored under the same
+    /// [key](NormalizedFen).
+    ///
+    /// # Errors
+    ///
+    /// Fails if the store can't be written, having saved none.
     fn save_evals(
         &mut self,
         evaluator: &EvaluatorId,
@@ -41,7 +54,12 @@ pub struct FailedGame {
     pub reason: String,
 }
 
-/// The evaluator gets the position's key with counters `0 1`, never `fen` itself.
+/// The evaluator gets the position's [key](NormalizedFen) with [counters](Fen) `0 1`, never `fen`
+/// itself.
+///
+/// # Errors
+///
+/// Fails if the store can't be read or written, or the evaluator fails.
 pub fn evaluate_position(
     fen: &Fen,
     evaluator: &mut impl Evaluator,
@@ -62,7 +80,11 @@ pub fn evaluate_position(
     Ok(eval)
 }
 
-/// Fails only if the games can't be read. A game that fails saves nothing and goes in `failed`.
+/// A game that fails saves nothing and goes in `failed`.
+///
+/// # Errors
+///
+/// Fails only if the games can't be read.
 pub fn evaluate_games(
     store: &mut (impl GameReader + EvalStore),
     evaluator: &mut impl Evaluator,
@@ -97,8 +119,8 @@ struct GameCounts {
     cached: usize,
 }
 
-/// Adds the game's keys to `done` only if it succeeds, so later games retry a failed game's
-/// positions.
+/// Adds the game's [keys](NormalizedFen) to `done` only if it succeeds, so later games retry a
+/// failed game's positions.
 fn evaluate_game(
     game: &Game,
     id: &EvaluatorId,
@@ -162,7 +184,7 @@ mod tests {
     use crate::domain::{Game, Score, SourceKind};
 
     const START: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-    /// No en passant square: no black pawn can take.
+    /// No [en passant square](crate::Fen): no black pawn can take.
     const AFTER_E4: &str = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1";
 
     #[derive(Default)]
@@ -370,7 +392,8 @@ mod tests {
     mod games {
         use super::*;
 
-        /// Transposes into `QUEENSIDE_FIRST`; together they have 8 distinct positions.
+        /// Transposes into `QUEENSIDE_FIRST`: reaches the same position by a different move
+        /// order. Together they have 8 distinct positions.
         const KINGSIDE_FIRST: &str = "1. Nf3 Nf6 2. Nc3 Nc6";
         const QUEENSIDE_FIRST: &str = "1. Nc3 Nc6 2. Nf3 Nf6";
         const UNPLAYABLE: &str = "1. e4 e5 2. Ke3";

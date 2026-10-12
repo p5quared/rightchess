@@ -6,16 +6,19 @@ use anyhow::{Context, Result, ensure};
 use crate::chess::Fen;
 
 /// A position as a key, for finding it again however a game reached it, e.g.
-/// `rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq -`. It's a FEN's first four
-/// fields: placement, side to move and castling rights as written, and the en passant square
-/// only when a pawn of the side to move stands beside the pawn that just moved two squares
-/// (Polyglot's rule). The move counters are dropped.
+/// `rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq -`. It's a [FEN](Fen)'s first four
+/// fields: placement, side to move and [castling rights](Fen) as written, and the
+/// [en passant square](Fen) only when a pawn of the side to move stands beside the pawn that just
+/// moved two squares (Polyglot's rule; Polyglot is a common format for opening books, whose
+/// position hashes the key matches). The move [counters](Fen) are dropped.
 ///
-/// Caveat: that pawn may still be unable to capture, because it's pinned or its king is in
-/// check and the capture doesn't answer it. FIDE's repetition rule would ignore such a square,
-/// but the key keeps it, so one position can have two keys. That costs a repeated engine eval,
-/// never a wrong one: a key never stands for two different positions. Checking that the
-/// capture is legal would need `Board` and could fail on positions that can't be played.
+/// Caveat: that pawn may still be unable to capture, because it's pinned (moving it would expose
+/// its own king to attack) or its king is in check and the capture doesn't answer it. FIDE's
+/// repetition rule, which decides when the same position has occurred again for a draw, would
+/// ignore such a square, but the key keeps it, so one position can have two keys. That costs a
+/// repeated engine [eval](crate::Eval), never a wrong one: a key never stands for two different
+/// positions. Checking that the capture is legal would need `Board` and could fail on positions
+/// that can't be played.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct NormalizedFen(String);
 
@@ -32,12 +35,17 @@ impl From<&Fen> for NormalizedFen {
         let [placement, side, castling, en_passant, ..] = fields[..] else {
             unreachable!("{fen} has six fields");
         };
-        let en_passant = if pawn_beside(placement, side, en_passant) { en_passant } else { "-" };
+        let en_passant = if pawn_beside(placement, side, en_passant) {
+            en_passant
+        } else {
+            "-"
+        };
         NormalizedFen(format!("{placement} {side} {castling} {en_passant}"))
     }
 }
 
-/// The position as a FEN, with move counters `0 1`: the key doesn't keep the real ones.
+/// The position as a [FEN](Fen), with move [counters](Fen) `0 1`: the key doesn't keep the real
+/// ones.
 impl From<&NormalizedFen> for Fen {
     fn from(key: &NormalizedFen) -> Self {
         Fen(format!("{key} 0 1"))
@@ -61,7 +69,8 @@ impl FromStr for NormalizedFen {
     }
 }
 
-/// Whether a pawn of `side` stands beside the pawn that just passed the `en_passant` square.
+/// Whether a pawn of `side` stands beside the pawn that just passed the `en_passant` square, so
+/// it might capture [en passant](Fen).
 fn pawn_beside(placement: &str, side: &str, en_passant: &str) -> bool {
     let &[file, _] = en_passant.as_bytes() else {
         return false;
@@ -76,8 +85,8 @@ fn pawn_beside(placement: &str, side: &str, en_passant: &str) -> bool {
         .any(|beside| piece_at(placement, beside, rank) == Some(pawn))
 }
 
-/// The piece on a square of a FEN's placement, with files counted from 0 for a and ranks from
-/// 1. Squares off the board are empty.
+/// The piece on a square of a [FEN](Fen)'s placement, with files (columns) counted from 0 for a
+/// and ranks (rows) from 1. Squares off the board are empty.
 fn piece_at(placement: &str, file: i32, rank: usize) -> Option<char> {
     let row = placement.split('/').nth(8usize.checked_sub(rank)?)?;
     let mut at = 0;
@@ -97,10 +106,10 @@ impl fmt::Display for NormalizedFen {
     }
 }
 
-/// The contract of `NormalizedFen`: positions a game can reach by different move orders get
-/// the same key. The key is placement, side to move, castling rights, and the en passant square
-/// only when a pawn of the side to move stands beside the pawn that just moved two squares.
-/// Counters are dropped.
+/// The contract of [`NormalizedFen`]: positions a game can reach by different move orders get
+/// the same key. The key is placement, side to move, [castling rights](Fen), and the
+/// [en passant square](Fen) only when a pawn of the side to move stands beside the pawn that
+/// just moved two squares. [Counters](Fen) are dropped.
 #[cfg(test)]
 mod tests {
     use crate::chess::{Fen, NormalizedFen};
@@ -219,8 +228,8 @@ mod tests {
             }
         }
 
-        /// The board's edges don't wrap: a pawn on the far side of the board, on this rank or
-        /// the ones above and below, isn't beside the pushed pawn.
+        /// The board's edges don't wrap: a pawn on the far side of the board, on this rank (row)
+        /// or the ones above and below, isn't beside the pawn that was pushed two squares.
         #[test]
         fn edges_do_not_wrap() {
             for fen in [
@@ -237,9 +246,10 @@ mod tests {
             }
         }
 
-        /// The caveat on `NormalizedFen`: the rule only looks for a pawn beside the pushed one,
-        /// so the square is kept even when that pawn can't legally capture. Here a pinned pawn
-        /// and a king in check each keep a square FIDE's repetition rule would ignore.
+        /// The caveat on [`NormalizedFen`]: the rule only looks for a pawn beside the pushed one,
+        /// so the [en passant square](Fen) is kept even when that pawn can't legally capture.
+        /// Here a pinned pawn (one that can't move without exposing its king) and a king in check
+        /// each keep a square FIDE's repetition rule would ignore.
         #[test]
         fn en_passant_is_kept_even_when_the_capture_is_illegal() {
             for fen in [
@@ -283,7 +293,8 @@ mod tests {
             }
         }
 
-        /// Only one of these move orders leaves exd6 possible, so the positions differ.
+        /// Only one of these move orders leaves exd6, an [en passant](Fen) capture, possible, so
+        /// the positions differ.
         #[test]
         fn a_possible_en_passant_capture_keeps_positions_apart() {
             let [possible, not] = last_keys(["1. e4 Nf6 2. e5 d5", "1. e4 d5 2. e5 Nf6"]);
@@ -360,8 +371,8 @@ mod tests {
                 .collect()
         }
 
-        /// Whether `fen` has an en passant square with a pawn of the side to move beside the
-        /// pawn that just moved two squares.
+        /// Whether `fen` has an [en passant square](Fen) with a pawn of the side to move beside
+        /// the pawn that just moved two squares.
         fn pawn_beside(fen: &Fen) -> bool {
             let fields: Vec<&str> = fen.as_str().split(' ').collect();
             let [placement, side, _, en_passant, ..] = fields[..] else {
@@ -383,7 +394,7 @@ mod tests {
                 .any(|file| grid[row][file as usize] == pawn)
         }
 
-        /// `fen` with other counters.
+        /// `fen` with other [counters](Fen).
         fn with_counters(fen: &Fen, halfmove: u32, fullmove: u32) -> Fen {
             let fields: Vec<&str> = fen.as_str().split(' ').collect();
             let text = format!("{} {halfmove} {fullmove}", fields[..4].join(" "));
@@ -428,7 +439,7 @@ mod tests {
                 prop_assert_eq!(read, key);
             }
 
-            /// Text reads as a key exactly when it's some FEN's key.
+            /// Text reads as a [key](NormalizedFen) exactly when it's some [FEN](Fen)'s key.
             #[test]
             fn text_reads_as_a_key_exactly_when_it_is_one(fen in fens(), cut in 0..2usize) {
                 let fields: Vec<&str> = fen.as_str().split(' ').collect();

@@ -1,5 +1,6 @@
 //! Real games from lichess, through the crate's public API: each parses as written, gives lichess's
-//! own move list, and, in standard chess, plays through position by position, each with a key.
+//! own move list, and, in standard chess, plays through position by position, each with a
+//! [key](NormalizedFen).
 
 use proptest::prelude::*;
 use proptest::sample::{Index, select};
@@ -40,7 +41,7 @@ fn parse(game: &LichessGame) -> Pgn {
         .unwrap_or_else(|err| panic!("{}: {err}", game.name()))
 }
 
-/// The FENs of `pgn` as text, or the first error.
+/// The [FENs](Fen) of `pgn` as text, or the first error.
 fn fens(pgn: &Pgn) -> Result<Vec<String>, String> {
     pgn.fens()
         .map(|item| {
@@ -51,7 +52,8 @@ fn fens(pgn: &Pgn) -> Result<Vec<String>, String> {
 }
 
 /// What holds between consecutive positions of any game: the side to move alternates, the
-/// fullmove number goes up after Black moves, and the halfmove clock resets or goes up by one.
+/// [fullmove number](Fen) goes up after Black moves, and the [halfmove clock](Fen) resets or goes
+/// up by one.
 fn check_sequence(fens: &[String]) -> Result<(), String> {
     for pair in fens.windows(2) {
         let [before, after] = [&pair[0], &pair[1]].map(|fen| {
@@ -107,8 +109,8 @@ fn standard_games_play_through() {
     }
 }
 
-/// Every position of a standard game has a key that keeps its placement, side to move and
-/// castling rights, and reads back from its text.
+/// Every position of a standard game has a [key](NormalizedFen) that keeps its placement, side to
+/// move and [castling rights](Fen), and reads back from its text.
 #[test]
 fn standard_positions_normalize() {
     for game in games()

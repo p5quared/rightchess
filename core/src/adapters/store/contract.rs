@@ -45,7 +45,7 @@ fn key(id: &str) -> BatchKey {
     }
 }
 
-/// The pgn is derived from the id so reads also check that pgns round-trip.
+/// The [PGN](crate::Pgn) is derived from the id so reads also check that PGNs round-trip.
 fn game(id: &str) -> Game {
     let site = id.replace('\\', r"\\").replace('"', r#"\""#);
     Game {
@@ -114,7 +114,7 @@ pub fn empty_sealed_batch_is_sealed(mut store: impl SyncStore + GameReader) {
     assert_games(&store, &[]);
 }
 
-/// Two players who played each other both have the game in their own batch.
+/// Two players who played each other both have the game in their own [batch](crate::Batch).
 pub fn game_in_two_batches_is_read_once(mut store: impl SyncStore + GameReader) {
     save(&mut store, "erik:2024-03", true, &["a", "b"]);
     save(&mut store, "hikaru:2024-03", true, &["a", "c"]);

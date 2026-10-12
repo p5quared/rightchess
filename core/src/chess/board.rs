@@ -4,12 +4,13 @@ use anyhow::{Context, Result, anyhow, bail, ensure};
 
 use crate::chess::{Fen, Ply};
 
-/// A position in standard chess: enough to play SAN moves and write FENs.
+/// A position in standard chess: enough to play [SAN](Ply) moves and write [FENs](Fen).
+/// Standard chess is the usual game, as opposed to variants with other rules such as Chess960.
 #[derive(Debug, Clone)]
 pub struct Board {
     squares: [Option<Piece>; 64],
     side: Color,
-    /// In FEN's order, as in `RIGHTS`.
+    /// [Castling rights](Fen) in [FEN](Fen)'s order, as in `RIGHTS`.
     castling: [bool; 4],
     en_passant: Option<Square>,
     halfmove: u32,
@@ -38,7 +39,8 @@ struct Piece {
     kind: Kind,
 }
 
-/// A square, with files and ranks counted from 0: a1 is (0, 0) and h8 is (7, 7).
+/// A square, with files (columns a to h) and ranks (rows 1 to 8) counted from 0: a1 is (0, 0)
+/// and h8 is (7, 7).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Square {
     file: i8,
@@ -51,7 +53,7 @@ enum Wing {
     Queen,
 }
 
-/// The castling rights in FEN's order: `KQkq`.
+/// The [castling rights](Fen) in [FEN](Fen)'s order: `KQkq`.
 const RIGHTS: [(Color, Wing); 4] = [
     (Color::White, Wing::King),
     (Color::White, Wing::Queen),
@@ -70,9 +72,9 @@ struct Move {
 
 impl Board {
     /// The position `fen` describes, if it could be played from: each side has one king, no
-    /// pawn is on the first or last rank, the side that just moved isn't in check, castling
-    /// rights have their king and rook at home, and the en passant square is behind a pawn that
-    /// just moved two squares.
+    /// pawn is on the first or last rank (row), the side that just moved isn't in check (its
+    /// king isn't attacked), [castling rights](Fen) have their king and rook at home, and the
+    /// [en passant square](Fen) is behind a pawn that just moved two squares.
     pub fn from_fen(fen: &Fen) -> Result<Board> {
         let board = Board::parse(fen.as_str()).with_context(|| format!("{fen} isn't a FEN"))?;
         board
@@ -153,7 +155,9 @@ impl Board {
             let rank = 7 - row as i8;
             let mut file = 0;
             for c in text.chars() {
-                if let Some(empty) = c.to_digit(10) { file += empty as i8 } else {
+                if let Some(empty) = c.to_digit(10) {
+                    file += empty as i8;
+                } else {
                     let square = Square::new(file, rank).context("a rank is too long")?;
                     squares[square.index()] = Some(Piece::from_char(c).context("a piece")?);
                     file += 1;
@@ -232,8 +236,8 @@ impl Board {
         Ok(())
     }
 
-    /// The move `san` names, with any `+` or `#` removed. Fails with the reason it can't be
-    /// played.
+    /// The move `san` names, with any `+` (check) or `#` (checkmate) removed. Fails with the
+    /// reason it can't be played. `san` is a move in [SAN](Ply).
     fn resolve(&self, san: &str) -> Result<Move> {
         match san {
             "O-O" | "0-0" => return self.castle(Wing::King),
@@ -318,8 +322,8 @@ impl Board {
         })
     }
 
-    /// Whether the piece on `from` can move to `to`, ignoring checks. A pawn moves straight
-    /// unless it captures.
+    /// Whether the piece on `from` can move to `to`, ignoring checks (whether a king would be
+    /// left attacked). A pawn moves straight unless it captures.
     fn reaches(&self, from: Square, to: Square, capture: bool) -> bool {
         let Some(piece) = self.at(from) else {
             return false;
@@ -448,7 +452,7 @@ impl Board {
         next
     }
 
-    /// The position after a null move: the other side is to move.
+    /// The position after a null move, a pass: the other side is to move.
     fn pass(&self) -> Board {
         let mut next = self.clone();
         next.en_passant = None;
@@ -477,7 +481,7 @@ impl Color {
         }
     }
 
-    /// The way this side's pawns move along the files: up for White.
+    /// The way this side's pawns move along the files (columns): up for White.
     fn forward(self) -> i8 {
         match self {
             Color::White => 1,
@@ -487,7 +491,7 @@ impl Color {
 }
 
 impl Kind {
-    /// The piece a SAN letter names. Pawns have none.
+    /// The piece a [SAN](Ply) letter names, e.g. `N` for a knight. Pawns have none.
     fn from_char(c: char) -> Option<Kind> {
         match c {
             'N' => Some(Kind::Knight),
@@ -501,7 +505,7 @@ impl Kind {
 }
 
 impl Piece {
-    /// The piece a FEN letter names: uppercase for White.
+    /// The piece a [FEN](Fen) letter names: uppercase for White.
     fn from_char(c: char) -> Option<Piece> {
         let kind = match c.to_ascii_uppercase() {
             'P' => Kind::Pawn,
@@ -561,7 +565,9 @@ impl Square {
         Square::new(self.file + files, self.rank + ranks)
     }
 
-    /// Whether this square fits a SAN disambiguation: nothing, a file, a rank or a square.
+    /// Whether this square fits a [SAN](Ply) disambiguation: nothing, a file, a rank or a
+    /// square. A disambiguation says which of two pieces that can reach the target moves, as the
+    /// `b` in `Nbd7`.
     fn matches(self, hint: &str) -> bool {
         hint.bytes().all(|c| match c {
             b'a'..=b'h' => (c - b'a') as i8 == self.file,

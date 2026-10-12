@@ -67,7 +67,8 @@ impl ChessCom {
     }
 }
 
-/// One chess.com monthly archive.
+/// One chess.com monthly archive: chess.com's API serves a player's games as one archive per
+/// month.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChessComBatch {
     username: String,
@@ -165,7 +166,7 @@ fn parse_archive_month(url: &str) -> Result<YearMonth> {
     Ok(YearMonth { year, month })
 }
 
-/// Games without a pgn are skipped. A pgn that doesn't parse fails the month.
+/// Games without a [PGN](crate::Pgn) are skipped. A PGN that doesn't parse fails the month.
 fn games_from_month(response: MonthResponse) -> Result<Vec<Game>> {
     response
         .games
@@ -261,7 +262,8 @@ mod tests {
         source.fetch(&batches[0])
     }
 
-    /// `month_json` is chess.com's month response; `expected` is `(uuid, pgn)` per game.
+    /// `month_json` is chess.com's month response; `expected` is `(uuid, pgn)` per game, with the
+    /// game's [PGN](crate::Pgn).
     #[track_caller]
     fn check_games(month_json: &str, expected: &[(&str, &str)]) {
         let games = fetch_month(month_json).unwrap();

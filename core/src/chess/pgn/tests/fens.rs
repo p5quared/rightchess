@@ -1,7 +1,8 @@
-//! The contract of `Pgn::fens`: the positions a game's mainline passes through. Moves are played
-//! by the rules of standard chess from the `[FEN]` tag, or from the starting position without
-//! one. The en passant square follows the PGN spec: it's set after every double pawn push. The
-//! first ply that can't be played is an error that names it, and nothing follows it.
+//! The contract of [`Pgn::fens`]: the positions a game's [mainline](Pgn) passes through.
+//! Moves are played by the rules of standard chess from the [`[FEN]` tag](Pgn), or from the
+//! starting position without one. The [en passant square](Fen) follows the [PGN](Pgn) spec: it's
+//! set after every double pawn push. The first [ply](crate::Ply) that can't be played is an error
+//! that names it, and nothing follows it.
 
 use crate::chess::{Fen, Pgn};
 
@@ -531,8 +532,8 @@ mod properties {
             ..ProptestConfig::default()
         })]
 
-        /// Positions, then at most one error, and nothing after it. Every position is a `Fen`,
-        /// and a game without an error has one per ply and one more.
+        /// Positions, then at most one error, and nothing after it. Every position is a
+        /// [`Fen`], and a game without an error has one per [ply](crate::Ply) and one more.
         #[test]
         fn any_game_yields_positions_then_at_most_one_error(
             text in prop_oneof![game().prop_map(|game| game.text()), SOUP, any::<String>()]

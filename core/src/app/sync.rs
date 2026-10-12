@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceQuery {
     pub username: String,
-    /// Only load batches from this month onward.
+    /// Only load [batches](Batch) from this month onward.
     pub since: Option<YearMonth>,
 }
 
@@ -24,14 +24,28 @@ pub trait Batch {
 pub trait GameSource {
     type Batch: Batch;
 
+    /// # Errors
+    ///
+    /// Fails if the source can't list the user's batches.
     fn batches(&self, query: &SourceQuery) -> Result<Vec<Self::Batch>>;
+    /// # Errors
+    ///
+    /// Fails if the batch can't be fetched or its games can't be read.
     fn fetch(&self, batch: &Self::Batch) -> Result<Vec<Game>>;
 }
 
 pub trait SyncStore {
-    /// True if the batch is stored and was sealed when it was saved.
+    /// True if the [batch](Batch) is stored and was [sealed](Batch::is_sealed) when it was saved.
+    ///
+    /// # Errors
+    ///
+    /// Fails if the store can't be read.
     fn is_sealed(&self, key: &BatchKey) -> Result<bool>;
     /// Atomically replaces the batch's games and sealed flag.
+    ///
+    /// # Errors
+    ///
+    /// Fails if the store can't be written, leaving the batch as it was.
     fn save_batch(&mut self, key: BatchKey, sealed: bool, games: Vec<Game>) -> Result<()>;
 }
 
@@ -44,7 +58,12 @@ pub struct SyncReport {
 
 /// Fetches every batch that could have changed since the last sync and saves it to `store`.
 ///
-/// Batches are fetched one at a time. On error, batches saved before the failure stay saved.
+/// Batches are fetched one at a time.
+///
+/// # Errors
+///
+/// Fails if listing, fetching or saving a batch fails. Batches saved before the failure stay
+/// saved.
 pub fn sync<S: GameSource>(
     source: &S,
     query: &SourceQuery,

@@ -1,4 +1,8 @@
 /// From one side's point of view. Mate counts are in moves.
+///
+/// `Cp` is an advantage in centipawns, hundredths of a pawn's value: `Cp(150)` is one and a half
+/// pawns up. `Mates(n)` means this side can force checkmate (attack the king with no escape) in
+/// `n` moves, and `Mated(n)` that the other side can.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Score {
     Cp(i32),
@@ -8,6 +12,9 @@ pub enum Score {
 }
 
 /// Draws and stalemates are `Cp(0)`.
+///
+/// An eval is an engine's judgment of a position: how far ahead one side is, as a [`Score`].
+/// A stalemate is a draw where the side to move has no legal move but isn't in check.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Eval {
     white: Score,
@@ -47,7 +54,7 @@ impl Eval {
     }
 }
 
-/// Centipawn negation saturates: `Cp(i32::MIN)` flips to `Cp(i32::MAX)`.
+/// [Centipawn](Score) negation saturates: `Cp(i32::MIN)` flips to `Cp(i32::MAX)`.
 #[cfg(test)]
 mod tests {
     use super::{Eval, Score};

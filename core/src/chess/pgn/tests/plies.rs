@@ -1,5 +1,6 @@
-//! The contract of `Pgn::plies`: which parts of a PGN become plies. Only a move that isn't SAN
-//! is an error; text that isn't well-formed PGN never becomes a `Pgn`.
+//! The contract of [`Pgn::plies`]: which parts of a [PGN](Pgn) become
+//! [plies](Ply). Only a move that isn't [SAN](Ply) is an error; text that isn't well-formed PGN
+//! never becomes a [`Pgn`].
 
 use crate::chess::{Pgn, Ply};
 
@@ -7,7 +8,7 @@ fn texts(plies: &[Ply]) -> Vec<&str> {
     plies.iter().map(Ply::as_str).collect()
 }
 
-/// `expected` lists the plies separated by spaces, e.g. `"e4 e5"`.
+/// `expected` lists the [plies](Ply) separated by spaces, e.g. `"e4 e5"`.
 #[track_caller]
 fn check(pgn: &str, expected: &str) {
     let plies = parse(pgn).plies().expect(pgn);
@@ -158,7 +159,7 @@ mod properties {
     use super::*;
     use crate::chess::pgn::tests::games::{SOUP, game};
 
-    /// What the contract promises about every ply, whatever the input.
+    /// What the contract promises about every [ply](Ply), whatever the input.
     fn check_ply(input: &str, ply: &str) -> Result<(), TestCaseError> {
         prop_assert!(!ply.is_empty(), "empty ply");
         prop_assert!(input.contains(ply), "{ply:?} is not in the input");

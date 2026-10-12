@@ -4,6 +4,11 @@ use std::str::FromStr;
 use anyhow::{Result, ensure};
 
 /// One half-move in SAN as written, e.g. `Nf3+`. Only text that is SAN can be a `Ply`.
+///
+/// A half-move, or ply, is one side's move: `1. e4 e5` is two plies. SAN (Standard Algebraic
+/// Notation) is the usual way to write a move: the piece's letter and the square it goes to,
+/// e.g. `Nf3` for a knight to f3 and `exd5` for the pawn on the e-file taking on d5. Files are
+/// the board's columns, a to h, and ranks its rows, 1 to 8 from White's side.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Ply(String);
 
@@ -24,7 +29,9 @@ impl FromStr for Ply {
 }
 
 /// Whether `text` is a move, castling, drop or null move, with an optional `+` or `#` after all
-/// but the null move.
+/// but the null move. Castling is the king and rook moving together, written `O-O` or `O-O-O`.
+/// A null move is a pass, written `--`. `+` marks a check (an attack on the king) and `#`
+/// checkmate.
 fn is_san(text: &[u8]) -> bool {
     let body = text
         .strip_suffix(b"+")
@@ -37,7 +44,9 @@ fn is_castling(body: &[u8]) -> bool {
     [&b"O-O"[..], b"O-O-O", b"0-0", b"0-0-0"].contains(&body)
 }
 
-/// A drop such as `N@f3`. Pawns can't be dropped on the first or last rank.
+/// A drop such as `N@f3`. Pawns can't be dropped on the first or last rank. A drop places a
+/// captured piece back on the board, in variants such as Crazyhouse. Ranks are the board's rows,
+/// 1 to 8 from White's side.
 fn is_drop(body: &[u8]) -> bool {
     match *body {
         [b'P', b'@', file, rank] => is_file(file) && is_pawn_rank(rank, false),
@@ -46,7 +55,9 @@ fn is_drop(body: &[u8]) -> bool {
     }
 }
 
-/// A piece move such as `Nf3`, `Nbd7`, `R1e2` or `Qh4xe1`.
+/// A piece move such as `Nf3`, `Nbd7`, `R1e2` or `Qh4xe1`: the piece's letter, an optional file
+/// (column a to h), rank (row 1 to 8) or square saying which of two such pieces moves, `x` for
+/// a capture, then the target square.
 fn is_piece_move(body: &[u8]) -> bool {
     let [b'K' | b'Q' | b'R' | b'B' | b'N', ref rest @ ..] = *body else {
         return false;
@@ -64,8 +75,9 @@ fn is_piece_move(body: &[u8]) -> bool {
     from_ok && is_square(file, rank)
 }
 
-/// A pawn move such as `e4`, `exd5` or `e8=Q`. A pawn captures onto a neighbouring file, and
-/// promotes exactly when it reaches the first or last rank.
+/// A pawn move such as `e4`, `exd5` or `e8=Q`. A pawn captures onto a neighbouring file (column),
+/// and promotes exactly when it reaches the first or last rank (row): it becomes the piece
+/// after `=`, e.g. a queen in `e8=Q`.
 fn is_pawn_move(body: &[u8]) -> bool {
     let (body, promotes) = match *body {
         [ref rest @ .., b'=', b'Q' | b'R' | b'B' | b'N' | b'K'] => (rest, true),
@@ -84,6 +96,7 @@ fn is_pawn_move(body: &[u8]) -> bool {
 }
 
 /// Whether a pawn may arrive on `rank`: the first or last rank if it promotes, any other if not.
+/// Promoting is a pawn turning into another piece when it reaches the far row.
 fn is_pawn_rank(rank: u8, promotes: bool) -> bool {
     is_rank(rank) && matches!(rank, b'1' | b'8') == promotes
 }
@@ -106,9 +119,12 @@ impl fmt::Display for Ply {
     }
 }
 
-/// The contract of `Ply`: which text is a SAN move. Legality in a position isn't checked, but
-/// rules that hold in every position are: a pawn captures onto a neighbouring file, promotes
-/// exactly when it reaches the first or last rank, and is never dropped there.
+/// The contract of [`Ply`]: which text is a [SAN](Ply) move. Legality in a position isn't
+/// checked, but rules that hold in every position are: a pawn captures onto a neighbouring file,
+/// promotes exactly when it reaches the first or last rank, and is never dropped there.
+///
+/// Promoting turns a pawn into another piece, and a drop places a captured piece back on the
+/// board, as in Crazyhouse.
 #[cfg(test)]
 mod tests {
     use crate::chess::Ply;
@@ -281,7 +297,7 @@ mod tests {
 
         use super::*;
 
-        /// SAN as a regex: the oracle the parser must agree with.
+        /// [SAN](Ply) as a regex: the oracle the parser must agree with.
         fn san() -> String {
             let files: Vec<char> = ('a'..='h').collect();
             let captures: Vec<String> = files
@@ -300,10 +316,11 @@ mod tests {
             format!("({pawn}|{piece}|{drop}|{castle})[+#]?|--")
         }
 
-        /// Characters that SAN and the rest of PGN use, so that near misses come up often.
+        /// Characters that [SAN](Ply) and the rest of [PGN](crate::Pgn) use, so that near misses
+        /// come up often.
         const SOUP: &str = r"[KQRBNPZnpa-ijx0-9=+#@Oo\-.!?$* ]{0,8}";
 
-        /// A SAN move with one character added, removed or replaced.
+        /// A [SAN](Ply) move with one character added, removed or replaced.
         fn near_miss() -> impl Strategy<Value = String> {
             let edit = prop_oneof![
                 (any::<Index>(), SOUP).prop_map(|(at, c)| (at, 0, c)),

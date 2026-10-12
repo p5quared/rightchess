@@ -1,6 +1,7 @@
-//! The contract of `Pgn`: which text is one game in PGN. Its structure is checked: comments,
-//! variations and tags close, tags are `[Name "value"]` pairs before the movetext, and only
-//! comments follow the result. Its moves aren't; that's `Pgn::plies`.
+//! The contract of [`Pgn`]: which text is one game in [PGN](Pgn). Its structure is checked:
+//! comments, [variations](Pgn) and [tags](Pgn) close, tags are `[Name "value"]` pairs before the
+//! [movetext](Pgn), and only comments follow the [result](Pgn). Its moves aren't; that's
+//! [`Pgn::plies`].
 
 use crate::chess::Pgn;
 
@@ -219,7 +220,7 @@ mod properties {
         "[Ev-ent \"x\"]",
     ];
 
-    /// What may wrongly follow a result, and the lexeme the error must name.
+    /// What may wrongly follow a [result](Pgn), and the lexeme the error must name.
     const AFTER_RESULT: &[(&str, &str)] = &[
         ("e4", "e4"),
         ("2.", "2."),
@@ -306,7 +307,8 @@ mod properties {
             prop_assert!(err.to_string().contains(&expected), "{:?}: {}", text, err);
         }
 
-        /// A `Pgn` is as written, and its plies can only fail on a move that isn't SAN.
+        /// A [`Pgn`] is as written, and its [plies](crate::Ply) can only fail on a move that isn't
+        /// [SAN](crate::Ply).
         #[test]
         fn any_text_parses_as_written_or_is_an_error(text in prop_oneof![SOUP, any::<String>()]) {
             if let Ok(pgn) = text.parse::<Pgn>() {
