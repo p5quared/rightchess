@@ -1,4 +1,5 @@
 mod eval;
+pub mod features;
 mod game;
 
 pub use eval::{Eval, Score};
