@@ -81,6 +81,10 @@ fn assert_games(store: &impl GameReader, expected: &[&str]) {
     assert_eq!(actual, expected);
 }
 
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "every case takes its fresh store by value so the macro can call them alike"
+)]
 pub fn unknown_batch_is_not_sealed(store: impl SyncStore + GameReader) {
     assert_sealed(&store, "2024-03", false);
     assert_games(&store, &[]);
@@ -163,6 +167,10 @@ fn assert_eval(store: &impl EvalStore, id: &str, key: &str, expected: Option<Eva
     assert_eq!(actual, expected, "evaluator {id:?}, position {key:?}");
 }
 
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "every case takes its fresh store by value so the macro can call them alike"
+)]
 pub fn unknown_eval_is_none(store: impl EvalStore) {
     assert_eval(&store, "sf", START_KEY, None);
 }

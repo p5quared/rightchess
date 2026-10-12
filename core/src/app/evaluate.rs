@@ -216,7 +216,7 @@ mod tests {
 
         fn evaluate(&mut self, positions: &[Fen]) -> Result<Vec<Eval>> {
             self.calls
-                .push(positions.iter().map(|fen| fen.to_string()).collect());
+                .push(positions.iter().map(ToString::to_string).collect());
             if self.fail_on == Some(self.calls.len()) {
                 bail!("engine crashed");
             }
@@ -234,7 +234,10 @@ mod tests {
         }
     }
 
-    #[expect(clippy::cast_possible_truncation, reason = "any i32 from the hash will do")]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "any i32 from the hash will do"
+    )]
     fn fake_eval(id: &str, fen: &str) -> Eval {
         let mut hasher = DefaultHasher::new();
         (id, fen).hash(&mut hasher);
@@ -444,7 +447,7 @@ mod tests {
             let mut evaluator = FakeEvaluator::new("sf");
             let report = evaluate_games(&mut store, &mut evaluator).unwrap();
             assert_eq!(report, EvalReport::default());
-            assert!(evaluator.calls.is_empty());
+            assert_eq!(evaluator.calls, Vec::<Vec<String>>::new());
         }
 
         #[test]

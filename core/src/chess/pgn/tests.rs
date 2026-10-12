@@ -207,7 +207,7 @@ mod properties {
     use proptest::sample::{Index, select};
     use proptest::test_runner::FileFailurePersistence;
 
-    use super::games::{SOUP, game, group, render, word};
+    use super::games::{Piece, SOUP, game, group, render, word};
     use super::*;
 
     const MALFORMED_TAGS: &[&str] = &[
@@ -262,7 +262,7 @@ mod properties {
             }),
             // Anywhere after the first word of the movetext, before the result.
             (game(), any::<Index>()).prop_map(|(mut game, at)| {
-                let first_word = game.body.iter().position(|piece| piece.is_word());
+                let first_word = game.body.iter().position(Piece::is_word);
                 let first_word = first_word.unwrap_or_else(|| {
                     game.body.insert(0, word("e4"));
                     0
@@ -275,9 +275,10 @@ mod properties {
             (game(), any::<Index>(), select(AFTER_RESULT)).prop_map(
                 |(mut game, at, (extra, lexeme))| {
                     game.result.get_or_insert_with(|| word("1-0"));
-                    let piece = match extra.starts_with(['(', '[']) {
-                        true => group(extra),
-                        false => word(extra),
+                    let piece = if extra.starts_with(['(', '[']) {
+                        group(extra)
+                    } else {
+                        word(extra)
                     };
                     game.tail.insert(at.index(game.tail.len() + 1), piece);
                     (game.text(), format!("{lexeme} after the result"))

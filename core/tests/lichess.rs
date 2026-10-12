@@ -87,7 +87,7 @@ fn plies_match_lichess_move_lists() {
         let plies = parse(&game)
             .plies()
             .unwrap_or_else(|err| panic!("{}: {err}", game.name()));
-        let plies: Vec<&str> = plies.iter().map(|ply| ply.as_str()).collect();
+        let plies: Vec<&str> = plies.iter().map(rightchess::Ply::as_str).collect();
         assert_eq!(plies, game.moves(), "{}", game.name());
     }
 }

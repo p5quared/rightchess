@@ -232,9 +232,12 @@ mod tests {
         let batches = source.batches(&query(username, since)).unwrap();
         let actual: Vec<String> = batches
             .iter()
-            .map(|b| match b.is_sealed() {
-                true => b.month.to_string(),
-                false => format!("{} open", b.month),
+            .map(|b| {
+                if b.is_sealed() {
+                    b.month.to_string()
+                } else {
+                    format!("{} open", b.month)
+                }
             })
             .collect();
         assert_eq!(actual, expected);
@@ -400,7 +403,7 @@ mod tests {
         assert!(!batches.last().unwrap().is_sealed());
 
         let games = source.fetch(&batches[0]).unwrap();
-        assert!(!games.is_empty());
+        assert_ne!(games, []);
         assert!(games.iter().all(|g| !g.pgn.as_str().is_empty()));
         for game in &games {
             if let Err(err) = game.pgn.plies() {

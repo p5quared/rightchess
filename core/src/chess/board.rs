@@ -578,7 +578,12 @@ impl Square {
 
 impl fmt::Display for Square {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}{}", (b'a' + self.file.cast_unsigned()) as char, self.rank + 1)
+        write!(
+            f,
+            "{}{}",
+            (b'a' + self.file.cast_unsigned()) as char,
+            self.rank + 1
+        )
     }
 }
 
