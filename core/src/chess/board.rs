@@ -153,13 +153,10 @@ impl Board {
             let rank = 7 - row as i8;
             let mut file = 0;
             for c in text.chars() {
-                match c.to_digit(10) {
-                    Some(empty) => file += empty as i8,
-                    None => {
-                        let square = Square::new(file, rank).context("a rank is too long")?;
-                        squares[square.index()] = Some(Piece::from_char(c).context("a piece")?);
-                        file += 1;
-                    }
+                if let Some(empty) = c.to_digit(10) { file += empty as i8 } else {
+                    let square = Square::new(file, rank).context("a rank is too long")?;
+                    squares[square.index()] = Some(Piece::from_char(c).context("a piece")?);
+                    file += 1;
                 }
             }
         }
@@ -440,7 +437,7 @@ impl Board {
         let double_push = piece.kind == Kind::Pawn && (mv.to.rank - mv.from.rank).abs() == 2;
         next.en_passant = double_push.then(|| Square {
             file: mv.from.file,
-            rank: (mv.from.rank + mv.to.rank) / 2,
+            rank: i8::midpoint(mv.from.rank, mv.to.rank),
         });
         next.halfmove = if piece.kind == Kind::Pawn || captures {
             0

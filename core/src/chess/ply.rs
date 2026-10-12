@@ -8,6 +8,7 @@ use anyhow::{Result, ensure};
 pub struct Ply(String);
 
 impl Ply {
+    #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }

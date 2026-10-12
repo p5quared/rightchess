@@ -21,6 +21,7 @@ struct StoredBatch {
 }
 
 impl MemoryStore {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }

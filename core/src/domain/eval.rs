@@ -24,20 +24,24 @@ impl Score {
 }
 
 impl Eval {
+    #[must_use]
     pub fn from_white(score: Score) -> Eval {
         Eval { white: score }
     }
 
+    #[must_use]
     pub fn from_black(score: Score) -> Eval {
         Eval {
             white: score.flipped(),
         }
     }
 
+    #[must_use]
     pub fn white(&self) -> Score {
         self.white
     }
 
+    #[must_use]
     pub fn black(&self) -> Score {
         self.white.flipped()
     }

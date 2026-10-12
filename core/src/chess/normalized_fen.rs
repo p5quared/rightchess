@@ -20,6 +20,7 @@ use crate::chess::Fen;
 pub struct NormalizedFen(String);
 
 impl NormalizedFen {
+    #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -31,10 +32,7 @@ impl From<&Fen> for NormalizedFen {
         let [placement, side, castling, en_passant, ..] = fields[..] else {
             unreachable!("{fen} has six fields");
         };
-        let en_passant = match pawn_beside(placement, side, en_passant) {
-            true => en_passant,
-            false => "-",
-        };
+        let en_passant = if pawn_beside(placement, side, en_passant) { en_passant } else { "-" };
         NormalizedFen(format!("{placement} {side} {castling} {en_passant}"))
     }
 }

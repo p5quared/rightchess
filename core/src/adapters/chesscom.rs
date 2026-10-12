@@ -22,6 +22,7 @@ enum Http {
 
 impl ChessCom {
     /// chess.com asks API clients to identify themselves, ideally with contact details.
+    #[must_use]
     pub fn new(user_agent: &str) -> Self {
         let agent = ureq::Agent::config_builder()
             .user_agent(user_agent)

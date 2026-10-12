@@ -13,10 +13,12 @@ const STARTING: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
 pub struct Fen(pub(crate) String);
 
 impl Fen {
+    #[must_use]
     pub fn starting() -> Fen {
         str::parse(STARTING).expect("STARTING FEN should parse")
     }
 
+    #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }

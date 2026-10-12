@@ -14,6 +14,7 @@ use crate::chess::{Fen, Ply};
 pub struct Pgn(String);
 
 impl Pgn {
+    #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -145,10 +146,7 @@ fn mainline(text: &str) -> Result<Mainline<'_>> {
             "(" => depth = 1,
             word => words.push(word),
         }
-        section = match RESULTS.contains(&lexeme) {
-            true => Section::AfterResult,
-            false => Section::Movetext,
-        };
+        section = if RESULTS.contains(&lexeme) { Section::AfterResult } else { Section::Movetext };
     }
     ensure!(depth == 0, "unterminated variation");
     Ok(Mainline { tags, words })
