@@ -84,6 +84,8 @@ pub fn render(pieces: &[Piece]) -> String {
 #[derive(Debug, Clone)]
 pub struct Game {
     pub moves: Vec<String>,
+    /// The [tags](crate::Pgn)' names and unescaped values, in order.
+    pub tag_values: Vec<(String, String)>,
     pub tags: Vec<Piece>,
     /// The [movetext](crate::Pgn) before the [result](crate::Pgn).
     pub body: Vec<Piece>,
@@ -176,21 +178,29 @@ fn movetext(depth: u32) -> BoxedStrategy<(Vec<String>, Vec<Piece>)> {
 /// A game with [tags](crate::Pgn), filler around the moves, maybe a result, and maybe comments
 /// after it.
 pub fn game() -> impl Strategy<Value = Game> {
-    let tag = (TAG_NAME, TAG_VALUE).prop_map(|(name, value)| {
-        let value = value.replace('\\', r"\\").replace('"', r#"\""#);
-        group(format!("[{name} \"{value}\"]"))
+    let tag = (TAG_NAME, TAG_VALUE, SPACE).prop_map(|(name, value, space)| {
+        let escaped = value.replace('\\', r"\\").replace('"', r#"\""#);
+        let piece = Piece {
+            space,
+            ..group(format!("[{name} \"{escaped}\"]"))
+        };
+        ((name, value), piece)
     });
     (
-        prop::collection::vec(spaced(tag), 0..4),
+        prop::collection::vec(tag, 0..4),
         movetext(2),
         prop::option::of(spaced(RESULT.prop_map(word))),
         prop::collection::vec(comment(), 0..2),
     )
-        .prop_map(|(tags, (moves, body), result, tail)| Game {
-            moves,
-            tags,
-            body,
-            result,
-            tail,
+        .prop_map(|(tags, (moves, body), result, tail)| {
+            let (tag_values, tags) = tags.into_iter().unzip();
+            Game {
+                moves,
+                tag_values,
+                tags,
+                body,
+                result,
+                tail,
+            }
         })
 }

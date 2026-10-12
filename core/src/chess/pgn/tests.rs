@@ -8,6 +8,7 @@ use crate::chess::Pgn;
 mod fens;
 mod games;
 mod plies;
+mod tags;
 
 /// `text` parses, and the pgn keeps it as written.
 #[track_caller]

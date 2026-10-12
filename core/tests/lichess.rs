@@ -82,6 +82,16 @@ fn games_parse_as_written() {
 }
 
 #[test]
+fn game_id_tags_match_lichess_ids() {
+    for game in games() {
+        let pgn = parse(&game);
+        assert_eq!(pgn.tag("GameId"), Some(game.id.clone()), "{}", game.name());
+        let site = format!("https://lichess.org/{}", game.id);
+        assert_eq!(pgn.tag("Site"), Some(site), "{}", game.name());
+    }
+}
+
+#[test]
 fn plies_match_lichess_move_lists() {
     for game in games() {
         let plies = parse(&game)

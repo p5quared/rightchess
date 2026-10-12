@@ -44,6 +44,18 @@ impl Pgn {
             .collect()
     }
 
+    /// The unescaped value of the first [tag](Pgn) named `name`, e.g. `Some("180+2")` for
+    /// `"TimeControl"`. Names are case-sensitive, and tags in comments or [variations](Pgn) don't
+    /// count.
+    #[must_use]
+    pub fn tag(&self, name: &str) -> Option<String> {
+        mainline(&self.0)
+            .ok()?
+            .tags
+            .into_iter()
+            .find_map(|(tag, value)| (tag == name).then_some(value))
+    }
+
     /// The [mainline](Pgn)'s positions, as [FENs](Fen): the start, then one after each
     /// [ply](Ply). The start is the [`[FEN]` tag](Pgn), or the standard starting position
     /// without one. Moves are played by the rules of standard chess; other [variants](Pgn) are an
