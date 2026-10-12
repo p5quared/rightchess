@@ -151,12 +151,11 @@ impl Board {
             bail!("it doesn't have 6 fields");
         };
         let mut squares = [None; 64];
-        for (row, text) in board.split('/').enumerate() {
-            let rank = 7 - row as i8;
+        for (rank, text) in (0..8).rev().zip(board.split('/')) {
             let mut file = 0;
             for c in text.chars() {
                 if let Some(empty) = c.to_digit(10) {
-                    file += empty as i8;
+                    file += i8::try_from(empty)?;
                 } else {
                     let square = Square::new(file, rank).context("a rank is too long")?;
                     squares[square.index()] = Some(Piece::from_char(c).context("a piece")?);
@@ -544,7 +543,7 @@ impl Square {
     fn parse(text: &str) -> Option<Square> {
         match *text.as_bytes() {
             [file @ b'a'..=b'h', rank @ b'1'..=b'8'] => {
-                Square::new((file - b'a') as i8, (rank - b'1') as i8)
+                Square::new((file - b'a').cast_signed(), (rank - b'1').cast_signed())
             }
             _ => None,
         }
@@ -558,7 +557,7 @@ impl Square {
     }
 
     fn index(self) -> usize {
-        (self.rank * 8 + self.file) as usize
+        usize::from((self.rank * 8 + self.file).cast_unsigned())
     }
 
     fn offset(self, files: i8, ranks: i8) -> Option<Square> {
@@ -570,8 +569,8 @@ impl Square {
     /// `b` in `Nbd7`.
     fn matches(self, hint: &str) -> bool {
         hint.bytes().all(|c| match c {
-            b'a'..=b'h' => (c - b'a') as i8 == self.file,
-            b'1'..=b'8' => (c - b'1') as i8 == self.rank,
+            b'a'..=b'h' => (c - b'a').cast_signed() == self.file,
+            b'1'..=b'8' => (c - b'1').cast_signed() == self.rank,
             _ => false,
         })
     }
@@ -579,7 +578,7 @@ impl Square {
 
 impl fmt::Display for Square {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}{}", (b'a' + self.file as u8) as char, self.rank + 1)
+        write!(f, "{}{}", (b'a' + self.file.cast_unsigned()) as char, self.rank + 1)
     }
 }
 

@@ -92,7 +92,7 @@ fn piece_at(placement: &str, file: i32, rank: usize) -> Option<char> {
     let mut at = 0;
     for c in row.chars() {
         match c.to_digit(10) {
-            Some(empty) => at += empty as i32,
+            Some(empty) => at += empty.cast_signed(),
             None if at == file => return Some(c),
             None => at += 1,
         }
@@ -381,17 +381,17 @@ mod tests {
             if en_passant == "-" {
                 return false;
             }
-            let file = (en_passant.as_bytes()[0] - b'a') as i32;
+            let file = usize::from(en_passant.as_bytes()[0] - b'a');
             // The pushed pawn is on rank 5 (row 3) or rank 4 (row 4).
             let (row, pawn) = match side {
                 "w" => (3, 'P'),
                 _ => (4, 'p'),
             };
             let grid = grid(placement);
-            [file - 1, file + 1]
+            [file.checked_sub(1), Some(file + 1)]
                 .into_iter()
-                .filter(|file| (0..8).contains(file))
-                .any(|file| grid[row][file as usize] == pawn)
+                .flatten()
+                .any(|file| grid[row].get(file) == Some(&pawn))
         }
 
         /// `fen` with other [counters](Fen).

@@ -234,6 +234,7 @@ mod tests {
         }
     }
 
+    #[expect(clippy::cast_possible_truncation, reason = "any i32 from the hash will do")]
     fn fake_eval(id: &str, fen: &str) -> Eval {
         let mut hasher = DefaultHasher::new();
         (id, fen).hash(&mut hasher);

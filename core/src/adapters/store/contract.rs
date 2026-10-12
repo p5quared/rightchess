@@ -225,11 +225,11 @@ pub fn every_score_round_trips(mut store: impl EvalStore) {
 
 pub fn unusual_evaluator_ids_round_trip(mut store: impl EvalStore) {
     let ids = ["", "a:b", "a/b", "a b", "../a", "ä'\"\\", "A:B", "a"];
-    for (i, id) in ids.iter().enumerate() {
-        save_evals(&mut store, id, &[(START_KEY, cp(i as i32))]);
+    for (i, id) in (0..).zip(ids) {
+        save_evals(&mut store, id, &[(START_KEY, cp(i))]);
     }
-    for (i, id) in ids.iter().enumerate() {
-        assert_eval(&store, id, START_KEY, Some(cp(i as i32)));
+    for (i, id) in (0..).zip(ids) {
+        assert_eval(&store, id, START_KEY, Some(cp(i)));
     }
 }
 
