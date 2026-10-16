@@ -24,6 +24,23 @@ jobs:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      - name: Install Stockfish
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          case "$RUNNER_OS" in
+            Linux) asset=stockfish-linux-x86-64-universal; archive=$asset.tar.gz ;;
+            macOS) asset=stockfish-macos-universal; archive=$asset.tar.gz ;;
+            Windows) asset=stockfish-windows-x86-64-universal.exe; archive=stockfish-windows-x86-64-universal.zip ;;
+          esac
+          gh release download sf_19 --repo official-stockfish/Stockfish -p "$archive" -D "$RUNNER_TEMP"
+          cd "$RUNNER_TEMP"
+          case "$archive" in
+            *.zip) 7z x -y "$archive" > /dev/null ;;
+            *) tar xzf "$archive" ;;
+          esac
+          echo "STOCKFISH=$RUNNER_TEMP/stockfish/$asset" >> "$GITHUB_ENV"
       - run: cargo build --all-targets --locked
       - run: cargo test --locked
 
