@@ -3,6 +3,8 @@ use std::str::FromStr;
 
 use anyhow::{Result, anyhow, bail, ensure};
 
+use crate::chess::Color;
+
 const STARTING: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 /// One position in FEN as written, e.g. `rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq
@@ -30,6 +32,15 @@ impl Fen {
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+
+    #[must_use]
+    pub fn side_to_move(&self) -> Color {
+        match self.0.split(' ').nth(1) {
+            Some("w") => Color::White,
+            Some("b") => Color::Black,
+            _ => unreachable!("a Fen has a validated side-to-move field"),
+        }
     }
 }
 
@@ -141,7 +152,6 @@ pub(crate) mod tests {
 
     const START: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
-    /// `fen` parses, and the fen keeps it as written.
     #[track_caller]
     fn check(fen: &str) {
         let parsed: Fen = fen.parse().unwrap_or_else(|err| panic!("{fen:?}: {err}"));
@@ -149,7 +159,6 @@ pub(crate) mod tests {
         assert_eq!(parsed.to_string(), fen);
     }
 
-    /// `text` doesn't parse, and the error names it.
     #[track_caller]
     fn check_err(text: &str) {
         let err = text.parse::<Fen>().expect_err(text);
@@ -158,12 +167,25 @@ pub(crate) mod tests {
 
     mod spec {
         use super::{START, check, check_err};
-        use crate::chess::Fen;
+        use crate::chess::{Color, Fen};
 
         #[test]
         fn starting_position() {
             check(START);
             assert_eq!(Fen::starting().as_str(), START);
+        }
+
+        #[test]
+        fn side_to_move_comes_from_the_position() {
+            assert_eq!(Fen::starting().side_to_move(), Color::White);
+            for (side, expected) in [("w", Color::White), ("b", Color::Black)] {
+                for counters in ["0 1", "17 40"] {
+                    let fen: Fen = format!("4k3/8/8/8/8/8/8/4K3 {side} - - {counters}")
+                        .parse()
+                        .expect("valid FEN");
+                    assert_eq!(fen.side_to_move(), expected, "{fen}");
+                }
+            }
         }
 
         #[test]

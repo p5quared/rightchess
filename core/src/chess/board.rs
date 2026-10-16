@@ -2,7 +2,7 @@ use std::fmt;
 
 use anyhow::{Context, Result, anyhow, bail, ensure};
 
-use crate::chess::{Fen, Ply};
+use crate::chess::{Color, Fen, Ply};
 
 /// A position in standard chess: enough to play [SAN](Ply) moves and write [FENs](Fen).
 /// Standard chess is the usual game, as opposed to variants with other rules such as Chess960.
@@ -15,12 +15,6 @@ pub struct Board {
     en_passant: Option<Square>,
     halfmove: u32,
     fullmove: u32,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Color {
-    White,
-    Black,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -129,7 +123,6 @@ impl Board {
         ))
     }
 
-    /// The position after `ply`, or an error naming it if it can't be played here.
     pub fn play(&self, ply: &Ply) -> Result<Board> {
         let san = ply.as_str().trim_end_matches(['+', '#']);
         if san == "--" {
@@ -340,7 +333,6 @@ impl Board {
                 || (ranks == 2 * forward && from.rank == start && empty(from.offset(0, forward))))
     }
 
-    /// Whether the piece on `from` attacks `to`.
     fn attacks(&self, from: Square, to: Square) -> bool {
         let Some(piece) = self.at(from) else {
             return false;
@@ -539,7 +531,6 @@ impl Square {
         ((0..8).contains(&file) && (0..8).contains(&rank)).then_some(Square { file, rank })
     }
 
-    /// The square written like `e4`.
     fn parse(text: &str) -> Option<Square> {
         match *text.as_bytes() {
             [file @ b'a'..=b'h', rank @ b'1'..=b'8'] => {

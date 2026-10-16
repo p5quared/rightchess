@@ -2,6 +2,7 @@
 //! refers to that same decision, rather than to unrelated moves in a game.
 //!
 //! Centipawn conditions use the mover's perspective, including after the move.
+//! Use [`matches`] to evaluate a query against one decision's [`DecisionFacts`].
 //!
 //! ```
 //! use rightchess::query::{BlunderQuery, EvaluationQuery, PlyQuery, Query};
@@ -16,6 +17,10 @@
 //! ```
 
 use anyhow::{Result, ensure};
+
+mod matching;
+
+pub use matching::{DecisionFacts, MatchStatus, matches};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Query {
