@@ -198,15 +198,53 @@ impl From<PlyQuery> for Query {
 
 #[cfg(test)]
 mod tests {
+    use std::fmt::Debug;
+
     use super::*;
+
+    #[track_caller]
+    fn check_blunder(threshold: u32) {
+        let query = BlunderQuery::loss_at_least(threshold);
+        assert_eq!(query.min_centipawn_loss(), threshold, "{query:?}");
+        assert_eq!(Query::from(query.clone()), Query::Blunder(query));
+    }
+
+    #[track_caller]
+    fn check_evaluation(
+        query: EvaluationQuery,
+        moment: EvaluationMoment,
+        min: Option<i32>,
+        max: Option<i32>,
+    ) {
+        assert_eq!(query.moment(), moment, "{query:?}");
+        assert_eq!(query.min_centipawns(), min, "{query:?}");
+        assert_eq!(query.max_centipawns(), max, "{query:?}");
+        assert_eq!(Query::from(query.clone()), Query::Evaluation(query));
+    }
+
+    #[track_caller]
+    fn check_ply(first: usize, last: usize) {
+        let query = PlyQuery::between(first, last).expect("valid ply range");
+        assert_eq!(query.first_ply(), first, "{query:?}");
+        assert_eq!(query.last_ply(), last, "{query:?}");
+        assert_eq!(Query::from(query.clone()), Query::Ply(query));
+    }
+
+    #[track_caller]
+    fn check_err<T: Debug>(result: Result<T>, expected: &str) {
+        let err = result.expect_err(expected);
+        assert!(
+            err.to_string().contains(expected),
+            "expected error containing {expected:?}, got {err:?}"
+        );
+    }
 
     #[test]
     fn blunder_thresholds_include_zero_and_the_full_unsigned_range() {
-        for threshold in [0, 1, 200, u32::MAX] {
-            let query = BlunderQuery::loss_at_least(threshold);
-            assert_eq!(query.min_centipawn_loss(), threshold);
-            assert_eq!(Query::from(query.clone()), Query::Blunder(query));
-        }
+        check_blunder(0);
+        check_blunder(1);
+        check_blunder(200);
+        check_blunder(u32::MAX);
     }
 
     #[test]
@@ -215,21 +253,9 @@ mod tests {
             (EvaluationQuery::before_move(), EvaluationMoment::BeforeMove),
             (EvaluationQuery::after_move(), EvaluationMoment::AfterMove),
         ] {
-            let lower = builder.at_least(-200);
-            assert_eq!(lower.moment(), moment);
-            assert_eq!(lower.min_centipawns(), Some(-200));
-            assert_eq!(lower.max_centipawns(), None);
-
-            let upper = builder.at_most(100);
-            assert_eq!(upper.moment(), moment);
-            assert_eq!(upper.min_centipawns(), None);
-            assert_eq!(upper.max_centipawns(), Some(100));
-
-            let range = builder.between(-200, 100)?;
-            assert_eq!(range.moment(), moment);
-            assert_eq!(range.min_centipawns(), Some(-200));
-            assert_eq!(range.max_centipawns(), Some(100));
-            assert_eq!(Query::from(range.clone()), Query::Evaluation(range));
+            check_evaluation(builder.at_least(-200), moment, Some(-200), None);
+            check_evaluation(builder.at_most(100), moment, None, Some(100));
+            check_evaluation(builder.between(-200, 100)?, moment, Some(-200), Some(100));
         }
         Ok(())
     }
@@ -242,9 +268,12 @@ mod tests {
             (i32::MAX, i32::MAX),
             (i32::MIN, i32::MAX),
         ] {
-            let query = EvaluationQuery::before_move().between(min, max)?;
-            assert_eq!(query.min_centipawns(), Some(min));
-            assert_eq!(query.max_centipawns(), Some(max));
+            check_evaluation(
+                EvaluationQuery::before_move().between(min, max)?,
+                EvaluationMoment::BeforeMove,
+                Some(min),
+                Some(max),
+            );
         }
         Ok(())
     }
@@ -255,38 +284,32 @@ mod tests {
             EvaluationQuery::before_move(),
             EvaluationQuery::after_move(),
         ] {
-            for (min, max) in [(1, 0), (-100, -200), (i32::MAX, i32::MIN)] {
-                let err = builder.between(min, max).unwrap_err();
-                assert!(err.to_string().contains("minimum centipawns"), "{err}");
-            }
+            check_err(builder.between(1, 0), "minimum centipawns");
+            check_err(builder.between(-100, -200), "minimum centipawns");
+            check_err(builder.between(i32::MAX, i32::MIN), "minimum centipawns");
         }
     }
 
     #[test]
-    fn ply_ranges_accept_single_decisions_and_extreme_endpoints() -> Result<()> {
-        for (first, last) in [(1, 1), (1, 20), (1, usize::MAX), (usize::MAX, usize::MAX)] {
-            let query = PlyQuery::between(first, last)?;
-            assert_eq!(query.first_ply(), first);
-            assert_eq!(query.last_ply(), last);
-            assert_eq!(Query::from(query.clone()), Query::Ply(query));
-        }
-        Ok(())
+    fn ply_ranges_accept_single_decisions_and_extreme_endpoints() {
+        check_ply(1, 1);
+        check_ply(1, 20);
+        check_ply(1, usize::MAX);
+        check_ply(usize::MAX, usize::MAX);
     }
 
     #[test]
     fn ply_ranges_reject_zero_ordinals() {
-        for last in [0, 1, usize::MAX] {
-            let err = PlyQuery::between(0, last).unwrap_err();
-            assert!(err.to_string().contains("start at 1"), "{err}");
-        }
+        check_err(PlyQuery::between(0, 0), "start at 1");
+        check_err(PlyQuery::between(0, 1), "start at 1");
+        check_err(PlyQuery::between(0, usize::MAX), "start at 1");
     }
 
     #[test]
     fn ply_ranges_reject_reversed_endpoints() {
-        for (first, last) in [(1, 0), (20, 1), (usize::MAX, 1)] {
-            let err = PlyQuery::between(first, last).unwrap_err();
-            assert!(err.to_string().contains("first ply"), "{err}");
-        }
+        check_err(PlyQuery::between(1, 0), "first ply");
+        check_err(PlyQuery::between(20, 1), "first ply");
+        check_err(PlyQuery::between(usize::MAX, 1), "first ply");
     }
 
     #[test]
