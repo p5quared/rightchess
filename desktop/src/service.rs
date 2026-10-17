@@ -1,4 +1,5 @@
 use std::cmp::Reverse;
+use std::sync::{Mutex, PoisonError};
 
 use anyhow::Result;
 use rightchess::adapters::{ChessCom, MemoryStore};
@@ -7,21 +8,20 @@ use rightchess::{Game, SourceQuery, SyncReport, YearMonth, sync};
 /// chess.com asks API clients to identify themselves.
 const USER_AGENT: &str = "rightchess-desktop/0.1 (github.com/rightchess)";
 
-pub struct Synced {
-    /// The report's games are sorted newest first.
-    pub result: Result<SyncReport>,
-    pub store: MemoryStore,
-}
-
-#[must_use]
-pub fn run(mut store: MemoryStore, username: String, since: Option<YearMonth>) -> Synced {
+/// Syncs into the shared cache. The report's games are sorted newest first.
+pub fn run(
+    store: &Mutex<MemoryStore>,
+    username: String,
+    since: Option<YearMonth>,
+) -> Result<SyncReport> {
+    // A sync that panicked poisons the lock, but each batch it saved was written whole, so the
+    // cache is still sound.
+    let mut store = store.lock().unwrap_or_else(PoisonError::into_inner);
     let source = ChessCom::new(USER_AGENT);
     let query = SourceQuery { username, since };
-    let result = sync(&source, &query, &mut store).map(|mut report| {
-        sort_games(&mut report.games);
-        report
-    });
-    Synced { result, store }
+    let mut report = sync(&source, &query, &mut *store)?;
+    sort_games(&mut report.games);
+    Ok(report)
 }
 
 /// Newest first, by the day the game started and then by the source id.

@@ -3,6 +3,8 @@
 // The rsx! macro's expansion carries spans that trip this lint on otherwise-qualified paths.
 #![allow(unused_qualifications, reason = "rsx! macro expansion spans")]
 
+use std::sync::{Arc, Mutex};
+
 use components::badge::{Badge, BadgeVariant};
 use components::button::{Button, ButtonSize, ButtonVariant};
 use components::progress::Progress;
@@ -78,7 +80,7 @@ fn short_id(id: &str) -> String {
 fn App() -> Element {
     let mut username = use_signal(String::new);
     let mut slider = use_signal(max_slider);
-    let held = use_signal(MemoryStore::new);
+    let held = use_signal(|| Arc::new(Mutex::new(MemoryStore::new())));
     let state = use_signal(|| Load::Idle);
     let mut selected = use_signal(|| None::<usize>);
     let max = max_slider();
@@ -244,7 +246,7 @@ fn App() -> Element {
 fn start_sync(
     username: Signal<String>,
     slider: Signal<i32>,
-    mut held: Signal<MemoryStore>,
+    held: Signal<Arc<Mutex<MemoryStore>>>,
     mut state: Signal<Load>,
     mut selected: Signal<Option<usize>>,
 ) {
@@ -265,32 +267,27 @@ fn start_sync(
         username: name,
         since,
     };
-    let store = std::mem::take(&mut *held.write());
+    let store = held();
     state.set(Load::Running(submission.clone()));
     selected.set(None);
 
     let worker_user = submission.username.clone();
     spawn(async move {
         let outcome =
-            tokio::task::spawn_blocking(move || service::run(store, worker_user, since)).await;
+            tokio::task::spawn_blocking(move || service::run(&store, worker_user, since)).await;
         let load = match outcome {
             Err(join_error) => {
                 Load::Failed(submission, format!("the sync task failed: {join_error}"))
             }
-            Ok(synced) => {
-                held.set(synced.store);
-                match synced.result {
-                    Err(error) => Load::Failed(submission, format!("{error:#}")),
-                    Ok(SyncReport {
-                        games,
-                        failed: Some(failed),
-                        ..
-                    }) if games.is_empty() => Load::Failed(submission, failure(&failed)),
-                    Ok(report) => {
-                        selected.set((!report.games.is_empty()).then_some(0));
-                        Load::Ready { submission, report }
-                    }
-                }
+            Ok(Err(error)) => Load::Failed(submission, format!("{error:#}")),
+            Ok(Ok(SyncReport {
+                games,
+                failed: Some(failed),
+                ..
+            })) if games.is_empty() => Load::Failed(submission, failure(&failed)),
+            Ok(Ok(report)) => {
+                selected.set((!report.games.is_empty()).then_some(0));
+                Load::Ready { submission, report }
             }
         };
         state.set(load);
