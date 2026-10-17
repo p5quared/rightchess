@@ -1,0 +1,148 @@
+//! Turning a [`Game`] into the raw object the inspector shows, plus the tags used for the list.
+
+use rightchess::{Game, SourceKind};
+
+/// The complete game object, pretty-printed as JSON.
+///
+/// Only the fields core actually holds appear: the id and the PGN text. chess.com's own
+/// response carries more, but the adapter keeps only these.
+#[must_use]
+pub fn object(game: &Game) -> String {
+    let source = match game.id.source {
+        SourceKind::ChessCom => "ChessCom",
+    };
+    let value = serde_json::json!({
+        "id": {
+            "source": source,
+            "external_id": &game.id.external_id,
+        },
+        "pgn": game.pgn.as_str(),
+    });
+    serde_json::to_string_pretty(&value).unwrap_or_default()
+}
+
+/// The tags worth showing beside a game in the list.
+pub struct Meta {
+    pub white: Option<String>,
+    pub black: Option<String>,
+    pub result: Option<String>,
+    pub date: Option<String>,
+}
+
+impl Meta {
+    /// A one-line description built from whichever tags exist, e.g.
+    /// `2024.03.15 · White vs Black · 1-0`.
+    #[must_use]
+    pub fn caption(&self) -> String {
+        let players = match (&self.white, &self.black) {
+            (Some(white), Some(black)) => Some(format!("{white} vs {black}")),
+            _ => None,
+        };
+        [self.date.clone(), players, self.result.clone()]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>()
+            .join(" · ")
+    }
+}
+
+/// Reads the display tags from a game's PGN. Empty tags count as absent.
+#[must_use]
+pub fn meta(game: &Game) -> Meta {
+    let tag = |name: &str| game.pgn.tag(name).filter(|value| !value.is_empty());
+    Meta {
+        white: tag("White"),
+        black: tag("Black"),
+        result: tag("Result"),
+        date: tag("UTCDate").or_else(|| tag("Date")),
+    }
+}
+
+/// Highlights pretty-printed JSON as HTML spans so the inspector can colour it. The input is
+/// escaped, so the result is safe to inject.
+#[must_use]
+pub fn highlight(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let mut html = String::with_capacity(text.len() * 2);
+    let mut i = 0;
+    while i < chars.len() {
+        let current = chars[i];
+        if current == '"' {
+            let end = string_end(&chars, i);
+            let token: String = chars[i..end].iter().collect();
+            // A string followed by a colon is an object key, not a value.
+            let mut next = end;
+            while next < chars.len() && chars[next].is_whitespace() {
+                next += 1;
+            }
+            let class = if next < chars.len() && chars[next] == ':' {
+                "tok-key"
+            } else {
+                "tok-string"
+            };
+            push_span(&mut html, class, &token);
+            i = end;
+        } else if current.is_ascii_digit() || current == '-' {
+            let mut end = i;
+            while end < chars.len() && matches!(chars[end], '0'..='9' | '.' | 'e' | 'E' | '+' | '-')
+            {
+                end += 1;
+            }
+            let token: String = chars[i..end].iter().collect();
+            push_span(&mut html, "tok-number", &token);
+            i = end;
+        } else if current.is_ascii_alphabetic() {
+            let mut end = i;
+            while end < chars.len() && chars[end].is_ascii_alphabetic() {
+                end += 1;
+            }
+            let token: String = chars[i..end].iter().collect();
+            push_span(&mut html, "tok-literal", &token);
+            i = end;
+        } else {
+            escape_into(&mut html, current);
+            i += 1;
+        }
+    }
+    html
+}
+
+/// Copies text to the system clipboard. Best effort: access can fail when the window isn't
+/// focused, and there's nothing useful to show the user if it does.
+pub fn copy(text: &str) {
+    if let Ok(mut clipboard) = arboard::Clipboard::new() {
+        drop(clipboard.set_text(text));
+    }
+}
+
+/// The index just past the closing quote of the string starting at `start`, or the end of input.
+fn string_end(chars: &[char], start: usize) -> usize {
+    let mut i = start + 1;
+    while i < chars.len() {
+        match chars[i] {
+            '\\' => i += 2,
+            '"' => return i + 1,
+            _ => i += 1,
+        }
+    }
+    chars.len()
+}
+
+fn push_span(out: &mut String, class: &str, text: &str) {
+    out.push_str("<span class=\"");
+    out.push_str(class);
+    out.push_str("\">");
+    for c in text.chars() {
+        escape_into(out, c);
+    }
+    out.push_str("</span>");
+}
+
+fn escape_into(out: &mut String, c: char) {
+    match c {
+        '&' => out.push_str("&amp;"),
+        '<' => out.push_str("&lt;"),
+        '>' => out.push_str("&gt;"),
+        _ => out.push(c),
+    }
+}
