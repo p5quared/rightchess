@@ -5,7 +5,7 @@ use std::{fmt, iter};
 use anyhow::{Context, Result, anyhow, bail, ensure};
 
 use crate::chess::board::Board;
-use crate::chess::{Fen, Ply};
+use crate::chess::{Date, Fen, Ply};
 
 /// One game in PGN, as written. Only well-formed text is a `Pgn`: comments, variations and tags
 /// are closed, tags are `[Name "value"]` pairs before the movetext, and only comments follow
@@ -54,6 +54,18 @@ impl Pgn {
             .tags
             .into_iter()
             .find_map(|(tag, value)| (tag == name).then_some(value))
+    }
+
+    /// The day the game started: its `[UTCDate]` [tag](Pgn), or its `[Date]` tag when `UTCDate` is
+    /// absent or not a full date. The `[Date]` tag is the local date at the event, which can differ
+    /// from the UTC one around midnight. A full date is `YYYY.MM.DD` naming a real day;
+    /// [PGN](Pgn) writes unknown parts as `??`, as in `2024.??.??`. `None` when neither tag is a
+    /// full date.
+    #[must_use]
+    pub fn date(&self) -> Option<Date> {
+        ["UTCDate", "Date"]
+            .into_iter()
+            .find_map(|name| full_date(&self.tag(name)?))
     }
 
     /// The [mainline](Pgn)'s positions, as [FENs](Fen): the start, then one after each
@@ -122,6 +134,33 @@ fn start(tags: &[(&str, String)]) -> Result<Board> {
         None => Fen::starting(),
     };
     Board::from_fen(&fen)
+}
+
+/// The day `text` names if it's written `YYYY.MM.DD` and is a real day in the Gregorian calendar.
+fn full_date(text: &str) -> Option<Date> {
+    let well_formed = text.len() == 10
+        && text.bytes().enumerate().all(|(i, byte)| match i {
+            4 | 7 => byte == b'.',
+            _ => byte.is_ascii_digit(),
+        });
+    if !well_formed {
+        return None;
+    }
+    let date = Date {
+        year: text[..4].parse().ok()?,
+        month: text[5..7].parse().ok()?,
+        day: text[8..].parse().ok()?,
+    };
+    let leap = date.year.is_multiple_of(4)
+        && (!date.year.is_multiple_of(100) || date.year.is_multiple_of(400));
+    let month_len = match date.month {
+        2 if leap => 29,
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        1..=12 => 31,
+        _ => 0,
+    };
+    (1..=month_len).contains(&date.day).then_some(date)
 }
 
 /// The [tags](Pgn) and words of a game outside comments and [variations](Pgn).

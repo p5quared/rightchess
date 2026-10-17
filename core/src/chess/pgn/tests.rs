@@ -5,6 +5,7 @@
 
 use crate::chess::Pgn;
 
+mod dates;
 mod fens;
 mod games;
 mod plies;
