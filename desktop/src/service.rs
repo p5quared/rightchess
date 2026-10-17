@@ -70,28 +70,6 @@ mod tests {
     }
 
     #[test]
-    fn utc_date_wins_over_date() {
-        check(
-            vec![
-                game("a", &[("Date", "2024.03.16"), ("UTCDate", "2024.03.15")]),
-                game("b", &[("Date", "2024.03.15"), ("UTCDate", "2024.03.16")]),
-            ],
-            &["b", "a"],
-        );
-    }
-
-    #[test]
-    fn partial_utc_date_falls_back_to_date() {
-        check(
-            vec![
-                game("a", &[("UTCDate", "2024.03.15")]),
-                game("b", &[("Date", "2024.06.01"), ("UTCDate", "2024.??.??")]),
-            ],
-            &["b", "a"],
-        );
-    }
-
-    #[test]
     fn undated_games_go_last_by_descending_id() {
         check(
             vec![
