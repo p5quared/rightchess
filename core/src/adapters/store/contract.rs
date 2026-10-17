@@ -17,6 +17,10 @@ macro_rules! store_contract_tests {
             empty_sealed_batch_is_sealed,
             game_in_two_batches_is_read_once,
             unusual_ids_round_trip,
+            batch_games_reads_only_the_named_batches,
+            batch_games_skips_unstored_batches,
+            batch_games_reads_a_shared_game_once,
+            batch_games_reads_resaved_games,
             unknown_eval_is_none,
             saved_evals_read_back,
             evaluators_are_stored_apart,
@@ -72,13 +76,28 @@ fn assert_sealed(store: &impl SyncStore, batch: &str, expected: bool) {
     );
 }
 
+fn sorted(mut games: Vec<Game>) -> Vec<Game> {
+    games.sort_by(|a, b| a.id.external_id.cmp(&b.id.external_id));
+    games
+}
+
+fn games(ids: &[&str]) -> Vec<Game> {
+    ids.iter().map(|id| game(id)).collect()
+}
+
 #[track_caller]
 fn assert_games(store: &impl GameReader, expected: &[&str]) {
-    let mut actual = store.games().unwrap();
-    actual.sort_by(|a, b| a.id.external_id.cmp(&b.id.external_id));
-    let mut expected: Vec<_> = expected.iter().map(|id| game(id)).collect();
-    expected.sort_by(|a, b| a.id.external_id.cmp(&b.id.external_id));
-    assert_eq!(actual, expected);
+    assert_eq!(sorted(store.games().unwrap()), sorted(games(expected)));
+}
+
+#[track_caller]
+fn assert_batch_games(store: &impl SyncStore, batches: &[&str], expected: &[&str]) {
+    let keys: Vec<_> = batches.iter().map(|id| key(id)).collect();
+    assert_eq!(
+        sorted(store.batch_games(&keys).unwrap()),
+        sorted(games(expected)),
+        "batches {batches:?}"
+    );
 }
 
 #[expect(
@@ -133,8 +152,42 @@ pub fn unusual_ids_round_trip(mut store: impl SyncStore + GameReader) {
     }
     for id in ids {
         assert_sealed(&store, id, id != "A:B");
+        assert_batch_games(&store, &[id], &[id]);
     }
     assert_games(&store, &ids);
+}
+
+pub fn batch_games_reads_only_the_named_batches(mut store: impl SyncStore + GameReader) {
+    save(&mut store, "erik:2024-01", true, &["a"]);
+    save(&mut store, "erik:2024-02", false, &["b", "c"]);
+    save(&mut store, "hikaru:2024-01", true, &["d"]);
+    assert_batch_games(&store, &["erik:2024-01", "erik:2024-02"], &["a", "b", "c"]);
+    assert_batch_games(&store, &["erik:2024-02"], &["b", "c"]);
+    assert_batch_games(&store, &["hikaru:2024-01"], &["d"]);
+}
+
+pub fn batch_games_skips_unstored_batches(mut store: impl SyncStore + GameReader) {
+    assert_batch_games(&store, &[], &[]);
+    assert_batch_games(&store, &["2024-01"], &[]);
+    save(&mut store, "2024-01", true, &["a"]);
+    assert_batch_games(&store, &["2023-12", "2024-01", "2024-02"], &["a"]);
+}
+
+pub fn batch_games_reads_a_shared_game_once(mut store: impl SyncStore + GameReader) {
+    save(&mut store, "erik:2024-03", true, &["a", "b"]);
+    save(&mut store, "hikaru:2024-03", true, &["a", "c"]);
+    assert_batch_games(
+        &store,
+        &["erik:2024-03", "hikaru:2024-03"],
+        &["a", "b", "c"],
+    );
+    assert_batch_games(&store, &["erik:2024-03", "erik:2024-03"], &["a", "b"]);
+}
+
+pub fn batch_games_reads_resaved_games(mut store: impl SyncStore + GameReader) {
+    save(&mut store, "2024-03", false, &["a", "b"]);
+    save(&mut store, "2024-03", true, &["c"]);
+    assert_batch_games(&store, &["2024-03"], &["c"]);
 }
 
 const START_KEY: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -";

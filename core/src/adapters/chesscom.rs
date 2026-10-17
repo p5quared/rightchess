@@ -377,9 +377,14 @@ mod tests {
         ]);
         let mut store = MemoryStore::new();
 
-        sync(&source, &query("erik", None), &mut store).unwrap();
-        sync(&source, &query("hikaru", None), &mut store).unwrap();
+        let erik = sync(&source, &query("erik", None), &mut store).unwrap();
+        let hikaru = sync(&source, &query("Hikaru", None), &mut store).unwrap();
 
+        let ids = |games: &[Game]| -> Vec<String> {
+            games.iter().map(|g| g.id.external_id.clone()).collect()
+        };
+        assert_eq!(ids(&erik.games), ["e1"]);
+        assert_eq!(ids(&hikaru.games), ["h1"]);
         let mut ids: Vec<_> = store
             .games()
             .unwrap()

@@ -8,7 +8,7 @@ use components::button::{Button, ButtonSize, ButtonVariant};
 use components::progress::Progress;
 use dioxus::prelude::*;
 use rightchess::adapters::MemoryStore;
-use rightchess::{Game, SyncReport, YearMonth};
+use rightchess::{FailedBatch, Game, SyncReport, YearMonth};
 
 mod components;
 mod json;
@@ -42,10 +42,7 @@ enum Load {
     Running(Submission),
     Ready {
         submission: Submission,
-        games: Vec<Game>,
-        report: Option<SyncReport>,
-        /// Present when the sync failed partway but still saved some batches.
-        warning: Option<String>,
+        report: SyncReport,
     },
     Failed(Submission, String),
 }
@@ -81,8 +78,7 @@ fn short_id(id: &str) -> String {
 fn App() -> Element {
     let mut username = use_signal(String::new);
     let mut slider = use_signal(max_slider);
-    let submitted = use_signal(|| None::<Submission>);
-    let held = use_signal(|| None::<MemoryStore>);
+    let held = use_signal(MemoryStore::new);
     let state = use_signal(|| Load::Idle);
     let mut selected = use_signal(|| None::<usize>);
     let max = max_slider();
@@ -111,21 +107,17 @@ fn App() -> Element {
                 None,
                 format!("Sync failed for {}: {error}", submission.username),
             ),
-            Load::Ready {
-                submission,
-                games,
-                report,
-                warning,
-            } => (
-                games
+            Load::Ready { submission, report } => (
+                report
+                    .games
                     .iter()
                     .enumerate()
                     .map(|(index, game)| Row::new(index, game))
                     .collect(),
                 selected()
-                    .and_then(|index| games.get(index))
+                    .and_then(|index| report.games.get(index))
                     .map(json::object),
-                summary(submission, *report, warning.as_deref(), games.len()),
+                summary(submission, report),
             ),
         }
     };
@@ -156,7 +148,7 @@ fn App() -> Element {
                         oninput: move |event| username.set(event.value()),
                         onkeydown: move |event| {
                             if event.key() == Key::Enter {
-                                start_sync(username, slider, submitted, held, state, selected);
+                                start_sync(username, slider, held, state, selected);
                             }
                         },
                     }
@@ -186,7 +178,7 @@ fn App() -> Element {
                 }
                 Button {
                     disabled: running,
-                    onclick: move |_| start_sync(username, slider, submitted, held, state, selected),
+                    onclick: move |_| start_sync(username, slider, held, state, selected),
                     if running { "Syncing…" } else { "Sync" }
                 }
             }
@@ -249,13 +241,10 @@ fn App() -> Element {
     }
 }
 
-/// Starts a sync for the current form. Reuses the held store only when the query is unchanged, so
-/// another player's or range's batches can't leak into these results.
 fn start_sync(
     username: Signal<String>,
     slider: Signal<i32>,
-    mut submitted: Signal<Option<Submission>>,
-    mut held: Signal<Option<MemoryStore>>,
+    mut held: Signal<MemoryStore>,
     mut state: Signal<Load>,
     mut selected: Signal<Option<usize>>,
 ) {
@@ -276,52 +265,35 @@ fn start_sync(
         username: name,
         since,
     };
-    let reuse = submitted() == Some(submission.clone());
-    let carried = held.write().take();
-    let initial = if reuse { carried } else { None };
-
-    submitted.set(Some(submission.clone()));
+    let store = std::mem::take(&mut *held.write());
     state.set(Load::Running(submission.clone()));
     selected.set(None);
 
     let worker_user = submission.username.clone();
     spawn(async move {
         let outcome =
-            tokio::task::spawn_blocking(move || service::run(initial, worker_user, since)).await;
-        match outcome {
+            tokio::task::spawn_blocking(move || service::run(store, worker_user, since)).await;
+        let load = match outcome {
+            Err(join_error) => {
+                Load::Failed(submission, format!("the sync task failed: {join_error}"))
+            }
             Ok(synced) => {
-                held.set(Some(synced.store));
-                let games = synced.games;
-                selected.set((!games.is_empty()).then_some(0));
+                held.set(synced.store);
                 match synced.result {
-                    Ok(report) => state.set(Load::Ready {
-                        submission,
+                    Err(error) => Load::Failed(submission, format!("{error:#}")),
+                    Ok(SyncReport {
                         games,
-                        report: Some(report),
-                        warning: None,
-                    }),
-                    Err(error) => {
-                        let message = format!("{error:#}");
-                        if games.is_empty() {
-                            state.set(Load::Failed(submission, message));
-                        } else {
-                            state.set(Load::Ready {
-                                submission,
-                                games,
-                                report: None,
-                                warning: Some(message),
-                            });
-                        }
+                        failed: Some(failed),
+                        ..
+                    }) if games.is_empty() => Load::Failed(submission, failure(&failed)),
+                    Ok(report) => {
+                        selected.set((!report.games.is_empty()).then_some(0));
+                        Load::Ready { submission, report }
                     }
                 }
             }
-            Err(join_error) => {
-                state.set(Load::Failed(
-                    submission,
-                    format!("the sync task failed: {join_error}"),
-                ));
-            }
-        }
+        };
+        state.set(load);
     });
 }
 
@@ -335,27 +307,28 @@ fn selected_since(position: i32) -> Option<YearMonth> {
     (position > 0).then(|| time::at(position - 1))
 }
 
-fn summary(
-    submission: &Submission,
-    report: Option<SyncReport>,
-    warning: Option<&str>,
-    count: usize,
-) -> String {
+fn summary(submission: &Submission, report: &SyncReport) -> String {
     let range = match submission.since {
         Some(month) => format!("since {}", time::label(month)),
         None => "all history".to_string(),
     };
-    let mut parts = vec![
+    let partial = report
+        .failed
+        .as_ref()
+        .map(|failed| format!("partial: {}", failure(failed)));
+    [
         format!("Synced {}", submission.username),
         range,
-        format!("{count} game(s)"),
-    ];
-    if let Some(report) = report {
-        parts.push(format!("fetched {}", report.num_fetched));
-        parts.push(format!("skipped {}", report.num_skipped));
-    }
-    if let Some(warning) = warning {
-        parts.push(format!("partial: {warning}"));
-    }
-    parts.join(" · ")
+        format!("{} game(s)", report.games.len()),
+        format!("fetched {}", report.num_fetched),
+        format!("skipped {}", report.num_skipped),
+    ]
+    .into_iter()
+    .chain(partial)
+    .collect::<Vec<_>>()
+    .join(" · ")
+}
+
+fn failure(failed: &FailedBatch) -> String {
+    format!("batch {}: {}", failed.batch.id, failed.reason)
 }

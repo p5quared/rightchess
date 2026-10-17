@@ -36,17 +36,17 @@ impl SyncStore for MemoryStore {
         self.batches.insert(key, StoredBatch { sealed, games });
         Ok(())
     }
+
+    fn batch_games(&self, keys: &[BatchKey]) -> Result<Vec<Game>> {
+        Ok(unique_games(
+            keys.iter().filter_map(|key| self.batches.get(key)),
+        ))
+    }
 }
 
 impl GameReader for MemoryStore {
     fn games(&self) -> Result<Vec<Game>> {
-        let unique: HashMap<_, _> = self
-            .batches
-            .values()
-            .flat_map(|b| &b.games)
-            .map(|g| (&g.id, g))
-            .collect();
-        Ok(unique.into_values().cloned().collect())
+        Ok(unique_games(self.batches.values()))
     }
 }
 
@@ -69,6 +69,11 @@ impl EvalStore for MemoryStore {
         self.evals.extend(keyed);
         Ok(())
     }
+}
+
+fn unique_games<'a>(batches: impl Iterator<Item = &'a StoredBatch>) -> Vec<Game> {
+    let unique: HashMap<_, _> = batches.flat_map(|b| &b.games).map(|g| (&g.id, g)).collect();
+    unique.into_values().cloned().collect()
 }
 
 #[cfg(test)]

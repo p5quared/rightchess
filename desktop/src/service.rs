@@ -1,41 +1,27 @@
-//! The sync workflow: fetch chess.com games and return everything the UI needs, including the
-//! store so the next sync of the same query can reuse it.
-
 use std::cmp::Reverse;
 
 use anyhow::Result;
 use rightchess::adapters::{ChessCom, MemoryStore};
-use rightchess::{Game, GameReader, SourceQuery, SyncReport, YearMonth, sync};
+use rightchess::{Game, SourceQuery, SyncReport, YearMonth, sync};
 
 /// chess.com asks API clients to identify themselves.
 const USER_AGENT: &str = "rightchess-desktop/0.1 (github.com/rightchess)";
 
-/// The result of one sync attempt.
 pub struct Synced {
-    /// `Ok` when every batch was fetched. `Err` holds the failure; the games below may still
-    /// contain batches saved before it.
+    /// The report's games are sorted newest first.
     pub result: Result<SyncReport>,
-    /// Handed back so a later sync of the same query reuses the downloaded batches.
     pub store: MemoryStore,
-    /// Every game in the store, newest first.
-    pub games: Vec<Game>,
 }
 
-/// Runs one sync from scratch or on top of an existing store.
 #[must_use]
-pub fn run(store: Option<MemoryStore>, username: String, since: Option<YearMonth>) -> Synced {
-    let mut store = store.unwrap_or_default();
+pub fn run(mut store: MemoryStore, username: String, since: Option<YearMonth>) -> Synced {
     let source = ChessCom::new(USER_AGENT);
     let query = SourceQuery { username, since };
-    let result = sync(&source, &query, &mut store);
-    // Games that were saved before a failure still belong in the result.
-    let mut games = store.games().unwrap_or_default();
-    sort_games(&mut games);
-    Synced {
-        result,
-        store,
-        games,
-    }
+    let result = sync(&source, &query, &mut store).map(|mut report| {
+        sort_games(&mut report.games);
+        report
+    });
+    Synced { result, store }
 }
 
 /// Newest first, by the day the game started and then by the source id.
