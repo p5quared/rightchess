@@ -1,21 +1,26 @@
 use std::cmp::Reverse;
 use std::sync::{Mutex, PoisonError};
 
-use anyhow::Result;
-use rightchess::adapters::{ChessCom, MemoryStore};
+use anyhow::{Context, Result};
+use rightchess::adapters::{ChessCom, FileStore};
 use rightchess::{Game, SourceQuery, SyncReport, YearMonth, sync};
 
 /// chess.com asks API clients to identify themselves.
 const USER_AGENT: &str = "rightchess-desktop/0.1 (github.com/rightchess)";
 
-/// Syncs into the shared cache. The report's games are sorted newest first.
+pub fn open_store() -> Result<FileStore> {
+    let dir = dirs::data_dir().context("this system has no app data directory")?;
+    FileStore::open(dir.join("rightchess/store.postcard"))
+}
+
+/// The report's games are sorted newest first.
 pub fn run(
-    store: &Mutex<MemoryStore>,
+    store: &Mutex<FileStore>,
     username: String,
     since: Option<YearMonth>,
 ) -> Result<SyncReport> {
     // A sync that panicked poisons the lock, but each batch it saved was written whole, so the
-    // cache is still sound.
+    // store is still sound.
     let mut store = store.lock().unwrap_or_else(PoisonError::into_inner);
     let source = ChessCom::new(USER_AGENT);
     let query = SourceQuery { username, since };

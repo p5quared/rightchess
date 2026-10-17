@@ -42,7 +42,7 @@ macro_rules! store_contract_tests {
 
 pub(crate) use store_contract_tests;
 
-fn key(id: &str) -> BatchKey {
+pub fn key(id: &str) -> BatchKey {
     BatchKey {
         source: SourceKind::ChessCom,
         id: id.to_string(),
@@ -50,7 +50,7 @@ fn key(id: &str) -> BatchKey {
 }
 
 /// The [PGN](crate::Pgn) is derived from the id so reads also check that PGNs round-trip.
-fn game(id: &str) -> Game {
+pub fn game(id: &str) -> Game {
     let site = id.replace('\\', r"\\").replace('"', r#"\""#);
     Game {
         id: GameId {
@@ -190,10 +190,10 @@ pub fn batch_games_reads_resaved_games(mut store: impl SyncStore + GameReader) {
     assert_batch_games(&store, &["2024-03"], &["c"]);
 }
 
-const START_KEY: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -";
+pub const START_KEY: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -";
 const AFTER_E4_KEY: &str = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq -";
 
-fn evaluator(id: &str) -> EvaluatorId {
+pub fn evaluator(id: &str) -> EvaluatorId {
     EvaluatorId(id.to_string())
 }
 
@@ -201,7 +201,7 @@ fn position(key: &str) -> NormalizedFen {
     key.parse().unwrap()
 }
 
-fn cp(centipawns: i32) -> Eval {
+pub fn cp(centipawns: i32) -> Eval {
     Eval::from_white(Score::Cp(centipawns))
 }
 

@@ -9,7 +9,7 @@ use components::badge::{Badge, BadgeVariant};
 use components::button::{Button, ButtonSize, ButtonVariant};
 use components::progress::Progress;
 use dioxus::prelude::*;
-use rightchess::adapters::MemoryStore;
+use rightchess::adapters::FileStore;
 use rightchess::{FailedBatch, Game, SyncReport, YearMonth};
 
 mod components;
@@ -80,7 +80,12 @@ fn short_id(id: &str) -> String {
 fn App() -> Element {
     let mut username = use_signal(String::new);
     let mut slider = use_signal(max_slider);
-    let held = use_signal(|| Arc::new(Mutex::new(MemoryStore::new())));
+    // Text, because a signal's value must be Clone and anyhow's error isn't.
+    let held = use_signal(|| {
+        service::open_store()
+            .map(|store| Arc::new(Mutex::new(store)))
+            .map_err(|err| format!("{err:#}"))
+    });
     let state = use_signal(|| Load::Idle);
     let mut selected = use_signal(|| None::<usize>);
     let max = max_slider();
@@ -97,7 +102,10 @@ fn App() -> Element {
             Load::Idle => (
                 Vec::new(),
                 None,
-                "Enter a Chess.com username and press Sync.".to_string(),
+                match &*held.read() {
+                    Ok(_) => "Enter a Chess.com username and press Sync.".to_string(),
+                    Err(error) => error.clone(),
+                },
             ),
             Load::Running(submission) => (
                 Vec::new(),
@@ -247,7 +255,7 @@ fn App() -> Element {
 fn start_sync(
     username: Signal<String>,
     slider: Signal<i32>,
-    held: Signal<Arc<Mutex<MemoryStore>>>,
+    held: Signal<Result<Arc<Mutex<FileStore>>, String>>,
     mut state: Signal<Load>,
     mut selected: Signal<Option<usize>>,
 ) {
@@ -268,7 +276,13 @@ fn start_sync(
         username: name,
         since,
     };
-    let store = held();
+    let store = match held() {
+        Ok(store) => store,
+        Err(error) => {
+            state.set(Load::Failed(submission, error));
+            return;
+        }
+    };
     state.set(Load::Running(submission.clone()));
     selected.set(None);
 
