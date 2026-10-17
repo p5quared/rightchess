@@ -1,5 +1,4 @@
 mod eval;
-pub mod features;
 mod game;
 pub mod query;
 
