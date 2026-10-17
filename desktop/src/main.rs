@@ -118,7 +118,8 @@ fn App() -> Element {
                     .collect(),
                 selected()
                     .and_then(|index| report.games.get(index))
-                    .map(json::object),
+                    .map(serde_json::to_string_pretty)
+                    .and_then(Result::ok),
                 summary(submission, report),
             ),
         }

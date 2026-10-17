@@ -1,25 +1,6 @@
-//! Turning a [`Game`] into the raw object the inspector shows, plus the tags used for the list.
+//! The inspector's JSON highlighting, plus the tags used for the list.
 
-use rightchess::{Date, Game, SourceKind};
-
-/// The complete game object, pretty-printed as JSON.
-///
-/// Only the fields core actually holds appear: the id and the PGN text. chess.com's own
-/// response carries more, but the adapter keeps only these.
-#[must_use]
-pub fn object(game: &Game) -> String {
-    let source = match game.id.source {
-        SourceKind::ChessCom => "ChessCom",
-    };
-    let value = serde_json::json!({
-        "id": {
-            "source": source,
-            "external_id": &game.id.external_id,
-        },
-        "pgn": game.pgn.as_str(),
-    });
-    serde_json::to_string_pretty(&value).unwrap_or_default()
-}
+use rightchess::{Date, Game};
 
 /// The tags worth showing beside a game in the list.
 pub struct Meta {

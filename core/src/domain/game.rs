@@ -1,19 +1,21 @@
 use std::fmt;
 
+use serde::Serialize;
+
 use crate::chess::Pgn;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 pub enum SourceKind {
     ChessCom,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 pub struct GameId {
     pub source: SourceKind,
     pub external_id: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Game {
     pub id: GameId,
     pub pgn: Pgn,

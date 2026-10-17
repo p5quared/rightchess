@@ -3,6 +3,7 @@ use std::str::FromStr;
 use std::{fmt, iter};
 
 use anyhow::{Context, Result, anyhow, bail, ensure};
+use serde::Serialize;
 
 use crate::chess::board::Board;
 use crate::chess::{Date, Fen, Ply};
@@ -19,7 +20,7 @@ use crate::chess::{Date, Fen, Ply};
 /// `!` or `?!`, or a NAG (Numeric Annotation Glyph), the same as a number such as `$14`. A
 /// `[FEN]` tag starts the game from a custom position, and a `[Variant]` tag names a variant, a
 /// game with other rules such as Chess960 or Crazyhouse.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Pgn(String);
 
 impl Pgn {
