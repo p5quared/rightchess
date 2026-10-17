@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 use anyhow::{Result, anyhow, bail, ensure};
 
-use crate::chess::Color;
+use crate::chess::{Color, Piece};
 
 const STARTING: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -42,6 +42,19 @@ impl Fen {
             _ => unreachable!("a Fen has a validated side-to-move field"),
         }
     }
+
+    /// The [pieces](Piece) as a board drawn with White at the bottom: ranks (rows) from 8 to 1,
+    /// each from the a-file (column) to the h-file, so `[0][0]` is a8 and `[7][7]` is h1.
+    #[must_use]
+    #[expect(
+        clippy::missing_panics_doc,
+        reason = "a Fen has eight ranks of eight squares"
+    )]
+    pub fn squares(&self) -> [[Option<Piece>; 8]; 8] {
+        let (placement, _) = self.0.split_once(' ').expect("a Fen has six fields");
+        let ranks: Vec<_> = placement.split('/').map(rank_squares).collect();
+        ranks.try_into().expect("a Fen has eight ranks")
+    }
 }
 
 impl FromStr for Fen {
@@ -57,6 +70,19 @@ impl fmt::Display for Fen {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
     }
+}
+
+fn rank_squares(rank: &str) -> [Option<Piece>; 8] {
+    let squares: Vec<_> = rank
+        .chars()
+        .flat_map(|c| match c.to_digit(10) {
+            Some(empty) => vec![None; empty as usize],
+            None => vec![Some(
+                Piece::from_char(c).expect("a Fen's pieces are FEN letters"),
+            )],
+        })
+        .collect();
+    squares.try_into().expect("a Fen's rank has eight squares")
 }
 
 /// Fails with the reason `text` isn't a [FEN](Fen).
@@ -148,7 +174,7 @@ fn counter(text: &str) -> Result<u32> {
 /// from it checks that.
 #[cfg(test)]
 pub(crate) mod tests {
-    use crate::chess::Fen;
+    use crate::chess::{Fen, Piece};
 
     const START: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -165,9 +191,20 @@ pub(crate) mod tests {
         assert!(err.to_string().contains(text), "{text:?}: {err}");
     }
 
+    #[track_caller]
+    fn check_squares(fen: &str, picture: [&str; 8]) {
+        let fen: Fen = fen.parse().unwrap_or_else(|err| panic!("{fen:?}: {err}"));
+        let drawn = fen.squares().map(|rank| {
+            rank.iter()
+                .map(|square| square.map_or('.', Piece::to_char))
+                .collect::<String>()
+        });
+        assert_eq!(drawn, picture, "{fen}");
+    }
+
     mod spec {
-        use super::{START, check, check_err};
-        use crate::chess::{Color, Fen};
+        use super::{START, check, check_err, check_squares};
+        use crate::chess::{Color, Fen, Piece, PieceKind};
 
         #[test]
         fn starting_position() {
@@ -198,6 +235,54 @@ pub(crate) mod tests {
                 "8/8/8/8/8/8/8/K6k w - - 99 150",
             ] {
                 check(fen);
+            }
+        }
+
+        #[test]
+        fn squares_of_the_starting_position() {
+            check_squares(
+                START,
+                [
+                    "rnbqkbnr", "pppppppp", "........", "........", "........", "........",
+                    "PPPPPPPP", "RNBQKBNR",
+                ],
+            );
+        }
+
+        #[test]
+        fn digits_are_runs_of_empty_squares() {
+            check_squares(
+                "4k3/8/8/8/8/8/8/4K3 w - - 0 1",
+                [
+                    "....k...", "........", "........", "........", "........", "........",
+                    "........", "....K...",
+                ],
+            );
+            check_squares(
+                "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/3P1N2/PPP2PPP/RNBQK2R w KQkq - 1 5",
+                [
+                    "r.bqk..r", "pppp.ppp", "..n..n..", "..b.p...", "..B.P...", "...P.N..",
+                    "PPP..PPP", "RNBQK..R",
+                ],
+            );
+        }
+
+        #[test]
+        fn letters_name_each_kind_and_colour() {
+            let fen: Fen = "kqrbnp2/8/8/8/8/8/8/KQRBNP2 w - - 0 1"
+                .parse()
+                .expect("valid FEN");
+            let kinds = [
+                PieceKind::King,
+                PieceKind::Queen,
+                PieceKind::Rook,
+                PieceKind::Bishop,
+                PieceKind::Knight,
+                PieceKind::Pawn,
+            ];
+            for (rank, color) in [(0, Color::Black), (7, Color::White)] {
+                let expected = kinds.map(|kind| Some(Piece { color, kind }));
+                assert_eq!(fen.squares()[rank][..6], expected, "rank index {rank}");
             }
         }
 
@@ -414,6 +499,20 @@ pub(crate) mod tests {
             proptest::string::string_regex(regex).unwrap()
         }
 
+        /// `squares` as a [FEN](Fen)'s first field, the piece placement.
+        fn write_placement(squares: [[Option<Piece>; 8]; 8]) -> String {
+            squares
+                .map(|rank| {
+                    rank.chunk_by(|a, b| a.is_none() && b.is_none())
+                        .map(|run| match run[0] {
+                            Some(piece) => piece.to_char().to_string(),
+                            None => run.len().to_string(),
+                        })
+                        .collect::<String>()
+                })
+                .join("/")
+        }
+
         /// Any [FEN](Fen) whose counters (the halfmove clock and fullmove number, the last two
         /// fields) fit a `u32`.
         pub(crate) fn fens() -> impl Strategy<Value = Fen> {
@@ -431,6 +530,12 @@ pub(crate) mod tests {
                 let fen: Fen = text.parse().map_err(|err: anyhow::Error| TestCaseError::fail(err.to_string()))?;
                 prop_assert_eq!(fen.as_str(), &text);
                 prop_assert_eq!(fen.to_string(), text);
+            }
+
+            #[test]
+            fn squares_write_back_as_the_placement(fen in fens()) {
+                let placement = fen.as_str().split(' ').next().unwrap();
+                prop_assert_eq!(write_placement(fen.squares()), placement);
             }
 
             #[test]

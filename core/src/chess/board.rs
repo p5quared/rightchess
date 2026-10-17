@@ -2,7 +2,7 @@ use std::fmt;
 
 use anyhow::{Context, Result, anyhow, bail, ensure};
 
-use crate::chess::{Color, Fen, Ply};
+use crate::chess::{Color, Fen, Piece, PieceKind, Ply};
 
 /// A position in standard chess: enough to play [SAN](Ply) moves and write [FENs](Fen).
 /// Standard chess is the usual game, as opposed to variants with other rules such as Chess960.
@@ -15,22 +15,6 @@ pub struct Board {
     en_passant: Option<Square>,
     halfmove: u32,
     fullmove: u32,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Kind {
-    Pawn,
-    Knight,
-    Bishop,
-    Rook,
-    Queen,
-    King,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Piece {
-    color: Color,
-    kind: Kind,
 }
 
 /// A square, with files (columns a to h) and ranks (rows 1 to 8) counted from 0: a1 is (0, 0)
@@ -60,7 +44,7 @@ const RIGHTS: [(Color, Wing); 4] = [
 struct Move {
     from: Square,
     to: Square,
-    promotion: Option<Kind>,
+    promotion: Option<PieceKind>,
     castling: Option<Wing>,
 }
 
@@ -70,7 +54,7 @@ impl Board {
     /// king isn't attacked), [castling rights](Fen) have their king and rook at home, and the
     /// [en passant square](Fen) is behind a pawn that just moved two squares.
     pub fn from_fen(fen: &Fen) -> Result<Board> {
-        let board = Board::parse(fen.as_str()).with_context(|| format!("{fen} isn't a FEN"))?;
+        let board = Board::parse(fen).with_context(|| format!("{fen} isn't a FEN"))?;
         board
             .check()
             .map_err(|reason| anyhow!("{fen} can't be played: {reason}"))?;
@@ -138,26 +122,14 @@ impl Board {
         Ok(self.apply(mv))
     }
 
-    fn parse(fen: &str) -> Result<Board> {
-        let fields: Vec<&str> = fen.split(' ').collect();
-        let [board, side, castling, en_passant, halfmove, fullmove] = fields[..] else {
+    fn parse(fen: &Fen) -> Result<Board> {
+        let fields: Vec<&str> = fen.as_str().split(' ').collect();
+        let [_, side, castling, en_passant, halfmove, fullmove] = fields[..] else {
             bail!("it doesn't have 6 fields");
         };
-        let mut squares = [None; 64];
-        for (rank, text) in (0..8).rev().zip(board.split('/')) {
-            let mut file = 0;
-            for c in text.chars() {
-                if let Some(empty) = c.to_digit(10) {
-                    file += i8::try_from(empty)?;
-                } else {
-                    let square = Square::new(file, rank).context("a rank is too long")?;
-                    squares[square.index()] = Some(Piece::from_char(c).context("a piece")?);
-                    file += 1;
-                }
-            }
-        }
+        let a1_first: Vec<_> = fen.squares().into_iter().rev().flatten().collect();
         Ok(Board {
-            squares,
+            squares: a1_first.try_into().expect("a Fen has 64 squares"),
             side: if side == "w" {
                 Color::White
             } else {
@@ -175,7 +147,7 @@ impl Board {
         for color in [Color::White, Color::Black] {
             let king = Piece {
                 color,
-                kind: Kind::King,
+                kind: PieceKind::King,
             };
             let kings = self
                 .squares
@@ -188,7 +160,7 @@ impl Board {
             (square.rank == 0 || square.rank == 7)
                 && self
                     .at(square)
-                    .is_some_and(|piece| piece.kind == Kind::Pawn)
+                    .is_some_and(|piece| piece.kind == PieceKind::Pawn)
         });
         ensure!(!pawn_on_edge, "a pawn is on the first or last rank");
         ensure!(
@@ -200,12 +172,12 @@ impl Board {
             let at_home = self.at(king_home(color))
                 == Some(Piece {
                     color,
-                    kind: Kind::King,
+                    kind: PieceKind::King,
                 })
                 && self.at(rook_home(color, wing))
                     == Some(Piece {
                         color,
-                        kind: Kind::Rook,
+                        kind: PieceKind::Rook,
                     });
             ensure!(
                 at_home,
@@ -216,7 +188,7 @@ impl Board {
             let mover = self.side.other();
             let pawn = Piece {
                 color: mover,
-                kind: Kind::Pawn,
+                kind: PieceKind::Pawn,
             };
             let behind = square.offset(0, -mover.forward());
             let ahead = square.offset(0, mover.forward());
@@ -237,15 +209,18 @@ impl Board {
             _ if san.contains('@') => bail!("drops aren't standard chess"),
             _ => {}
         }
-        let (kind, rest) = match Kind::from_char(san.chars().next().context("no move")?) {
+        let (kind, rest) = match PieceKind::from_char(san.chars().next().context("no move")?) {
             Some(kind) => (kind, &san[1..]),
-            None => (Kind::Pawn, san),
+            None => (PieceKind::Pawn, san),
         };
         let (rest, promotion) = match rest.split_once('=') {
-            Some((rest, piece)) => (rest, piece.chars().next().and_then(Kind::from_char)),
+            Some((rest, piece)) => (rest, piece.chars().next().and_then(PieceKind::from_char)),
             None => (rest, None),
         };
-        ensure!(promotion != Some(Kind::King), "a pawn can't become a king");
+        ensure!(
+            promotion != Some(PieceKind::King),
+            "a pawn can't become a king"
+        );
         let (from, to) = rest.split_at(rest.len() - 2);
         let to = Square::parse(to).context("no target square")?;
         let (from, capture) = match from.strip_suffix('x') {
@@ -256,7 +231,7 @@ impl Board {
             Some(piece) if piece.color == self.side => bail!("a piece of its own is on {to}"),
             Some(_) => ensure!(capture, "it captures on {to} without an x"),
             None => ensure!(
-                !capture || (kind == Kind::Pawn && self.en_passant == Some(to)),
+                !capture || (kind == PieceKind::Pawn && self.en_passant == Some(to)),
                 "nothing is on {to} to capture"
             ),
         }
@@ -320,7 +295,7 @@ impl Board {
         let Some(piece) = self.at(from) else {
             return false;
         };
-        if piece.kind != Kind::Pawn || capture {
+        if piece.kind != PieceKind::Pawn || capture {
             return self.attacks(from, to);
         }
         let forward = piece.color.forward();
@@ -341,12 +316,12 @@ impl Board {
         let diagonal = files != 0 && files.abs() == ranks.abs();
         let straight = (files == 0) != (ranks == 0);
         match piece.kind {
-            Kind::Pawn => ranks == piece.color.forward() && files.abs() == 1,
-            Kind::Knight => matches!((files.abs(), ranks.abs()), (1, 2) | (2, 1)),
-            Kind::King => files.abs().max(ranks.abs()) == 1,
-            Kind::Bishop => diagonal && self.is_clear(from, to),
-            Kind::Rook => straight && self.is_clear(from, to),
-            Kind::Queen => (diagonal || straight) && self.is_clear(from, to),
+            PieceKind::Pawn => ranks == piece.color.forward() && files.abs() == 1,
+            PieceKind::Knight => matches!((files.abs(), ranks.abs()), (1, 2) | (2, 1)),
+            PieceKind::King => files.abs().max(ranks.abs()) == 1,
+            PieceKind::Bishop => diagonal && self.is_clear(from, to),
+            PieceKind::Rook => straight && self.is_clear(from, to),
+            PieceKind::Queen => (diagonal || straight) && self.is_clear(from, to),
         }
     }
 
@@ -380,7 +355,7 @@ impl Board {
     fn in_check(&self, color: Color) -> bool {
         let king = Some(Piece {
             color,
-            kind: Kind::King,
+            kind: PieceKind::King,
         });
         Square::all()
             .find(|&square| self.at(square) == king)
@@ -397,7 +372,7 @@ impl Board {
             return next;
         };
         let en_passant_capture =
-            piece.kind == Kind::Pawn && mv.from.file != mv.to.file && self.at(mv.to).is_none();
+            piece.kind == PieceKind::Pawn && mv.from.file != mv.to.file && self.at(mv.to).is_none();
         let captures = self.at(mv.to).is_some() || en_passant_capture;
         if en_passant_capture {
             next.squares[Square {
@@ -420,21 +395,21 @@ impl Board {
                 rank: rook.rank,
             }
             .index()] = Some(Piece {
-                kind: Kind::Rook,
+                kind: PieceKind::Rook,
                 ..piece
             });
         }
         for (right, &(color, wing)) in next.castling.iter_mut().zip(&RIGHTS) {
-            let king_moved = piece.kind == Kind::King && piece.color == color;
+            let king_moved = piece.kind == PieceKind::King && piece.color == color;
             let rook_gone = [mv.from, mv.to].contains(&rook_home(color, wing));
             *right &= !king_moved && !rook_gone;
         }
-        let double_push = piece.kind == Kind::Pawn && (mv.to.rank - mv.from.rank).abs() == 2;
+        let double_push = piece.kind == PieceKind::Pawn && (mv.to.rank - mv.from.rank).abs() == 2;
         next.en_passant = double_push.then(|| Square {
             file: mv.from.file,
             rank: i8::midpoint(mv.from.rank, mv.to.rank),
         });
-        next.halfmove = if piece.kind == Kind::Pawn || captures {
+        next.halfmove = if piece.kind == PieceKind::Pawn || captures {
             0
         } else {
             self.halfmove.saturating_add(1)
@@ -477,51 +452,6 @@ impl Color {
         match self {
             Color::White => 1,
             Color::Black => -1,
-        }
-    }
-}
-
-impl Kind {
-    /// The piece a [SAN](Ply) letter names, e.g. `N` for a knight. Pawns have none.
-    fn from_char(c: char) -> Option<Kind> {
-        match c {
-            'N' => Some(Kind::Knight),
-            'B' => Some(Kind::Bishop),
-            'R' => Some(Kind::Rook),
-            'Q' => Some(Kind::Queen),
-            'K' => Some(Kind::King),
-            _ => None,
-        }
-    }
-}
-
-impl Piece {
-    /// The piece a [FEN](Fen) letter names: uppercase for White.
-    fn from_char(c: char) -> Option<Piece> {
-        let kind = match c.to_ascii_uppercase() {
-            'P' => Kind::Pawn,
-            upper => Kind::from_char(upper)?,
-        };
-        let color = if c.is_ascii_uppercase() {
-            Color::White
-        } else {
-            Color::Black
-        };
-        Some(Piece { color, kind })
-    }
-
-    fn to_char(self) -> char {
-        let c = match self.kind {
-            Kind::Pawn => 'P',
-            Kind::Knight => 'N',
-            Kind::Bishop => 'B',
-            Kind::Rook => 'R',
-            Kind::Queen => 'Q',
-            Kind::King => 'K',
-        };
-        match self.color {
-            Color::White => c,
-            Color::Black => c.to_ascii_lowercase(),
         }
     }
 }

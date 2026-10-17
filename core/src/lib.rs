@@ -10,6 +10,6 @@ pub use app::game_reader::GameReader;
 pub use app::sync::{
     Batch, BatchKey, FailedBatch, GameSource, SourceQuery, SyncReport, SyncStore, sync,
 };
-pub use chess::{Color, Date, Fen, NormalizedFen, Pgn, Ply};
+pub use chess::{Color, Date, Fen, NormalizedFen, Pgn, Piece, PieceKind, Ply};
 pub use domain::query;
 pub use domain::{Eval, Game, GameId, Score, SourceKind, YearMonth};
