@@ -92,7 +92,7 @@ html, body {
 .workspace {
   flex: 1;
   display: grid;
-  grid-template-columns: 300px 1fr;
+  grid-template-columns: 300px minmax(0, 1fr);
   min-height: 0;
 }
 
@@ -156,7 +156,8 @@ html, body {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
   line-height: 1.55;
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   tab-size: 2;
   user-select: text;
 }
