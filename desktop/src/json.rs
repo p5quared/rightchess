@@ -1,6 +1,6 @@
 //! Turning a [`Game`] into the raw object the inspector shows, plus the tags used for the list.
 
-use rightchess::{Game, SourceKind};
+use rightchess::{Date, Game, SourceKind};
 
 /// The complete game object, pretty-printed as JSON.
 ///
@@ -26,7 +26,7 @@ pub struct Meta {
     pub white: Option<String>,
     pub black: Option<String>,
     pub result: Option<String>,
-    pub date: Option<String>,
+    pub date: Option<Date>,
 }
 
 impl Meta {
@@ -38,7 +38,10 @@ impl Meta {
             (Some(white), Some(black)) => Some(format!("{white} vs {black}")),
             _ => None,
         };
-        [self.date.clone(), players, self.result.clone()]
+        let date = self
+            .date
+            .map(|date| format!("{:04}.{:02}.{:02}", date.year, date.month, date.day));
+        [date, players, self.result.clone()]
             .into_iter()
             .flatten()
             .collect::<Vec<_>>()
@@ -54,7 +57,7 @@ pub fn meta(game: &Game) -> Meta {
         white: tag("White"),
         black: tag("Black"),
         result: tag("Result"),
-        date: tag("UTCDate").or_else(|| tag("Date")),
+        date: game.pgn.date(),
     }
 }
 
@@ -144,5 +147,56 @@ fn escape_into(out: &mut String, c: char) {
         '<' => out.push_str("&lt;"),
         '>' => out.push_str("&gt;"),
         _ => out.push(c),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rightchess::{GameId, SourceKind};
+
+    use super::*;
+
+    fn game(tags: &[(&str, &str)]) -> Game {
+        let pgn = tags
+            .iter()
+            .map(|(name, value)| format!("[{name} \"{value}\"]"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        Game {
+            id: GameId {
+                source: SourceKind::ChessCom,
+                external_id: "id".to_string(),
+            },
+            pgn: pgn.parse().unwrap(),
+        }
+    }
+
+    #[track_caller]
+    fn check(tags: &[(&str, &str)], expected: &str) {
+        assert_eq!(meta(&game(tags)).caption(), expected, "{tags:?}");
+    }
+
+    #[test]
+    fn caption_joins_the_tags_that_exist() {
+        check(
+            &[
+                ("White", "Alice"),
+                ("Black", "Bob"),
+                ("Result", "1-0"),
+                ("UTCDate", "2024.03.15"),
+            ],
+            "2024.03.15 · Alice vs Bob · 1-0",
+        );
+        check(&[("White", "Alice"), ("Result", "1-0")], "1-0");
+        check(&[], "");
+    }
+
+    #[test]
+    fn caption_shows_the_day_the_game_started() {
+        check(
+            &[("Date", "2024.06.01"), ("UTCDate", "2024.??.??")],
+            "2024.06.01",
+        );
+        check(&[("Date", "2024.??.??")], "");
     }
 }
