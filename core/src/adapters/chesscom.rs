@@ -81,7 +81,10 @@ impl Batch for ChessComBatch {
     fn key(&self) -> BatchKey {
         BatchKey {
             source: SourceKind::ChessCom,
-            id: format!("{}:{}", self.username, self.month),
+            id: format!(
+                "{}:{:04}-{:02}",
+                self.username, self.month.year, self.month.month
+            ),
         }
     }
 
@@ -338,6 +341,26 @@ mod tests {
             &["https://x/games/2024/03"],
             &["2024-03 open"],
         );
+    }
+
+    /// Stores key batches by these ids, so changing them orphans every stored batch.
+    #[test]
+    fn batch_keys_are_stable() {
+        let source = ChessCom::fake([(
+            archives_url("hikaru"),
+            archives_json(&["https://x/games/2023/11", "https://x/games/2024/03"]),
+        )]);
+        let keys: Vec<BatchKey> = source
+            .batches(&query("Hikaru", None))
+            .unwrap()
+            .iter()
+            .map(Batch::key)
+            .collect();
+        let key = |id: &str| BatchKey {
+            source: SourceKind::ChessCom,
+            id: id.to_string(),
+        };
+        assert_eq!(keys, [key("hikaru:2023-11"), key("hikaru:2024-03")]);
     }
 
     #[test]
