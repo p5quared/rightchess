@@ -16,3 +16,4 @@
 pub mod badge;
 pub mod button;
 pub mod progress;
+pub mod tabs;

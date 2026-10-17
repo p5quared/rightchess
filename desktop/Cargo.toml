@@ -15,5 +15,8 @@ serde_json = { version = "1.0.151", features = ["preserve_order"] }
 tokio = { version = "1", features = ["rt"] }
 dirs = "7.0.0"
 
+[dev-dependencies]
+dioxus-ssr = "0.7.10"
+
 [lints]
 workspace = true

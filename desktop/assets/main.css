@@ -147,6 +147,20 @@ html, body {
 .game-caption { font-size: 11px; color: var(--muted); }
 
 .inspector { background: var(--panel); }
+/* Outranks the vendored tabs' own gap and padding, which suit a standalone card. Inactive panes
+   stay in the DOM marked `hidden`, and a `display` here would override that. */
+.workspace .inspector { gap: 0; }
+.inspector .panel-head { padding-block: 6px; }
+.inspector .tab-pane:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
 
 .code {
   margin: 0;
@@ -161,6 +175,43 @@ html, body {
   tab-size: 2;
   user-select: text;
 }
+.viewer {
+  container-type: size;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 20px;
+  overflow-y: auto;
+  outline: none;
+}
+.board {
+  display: grid;
+  grid-template: repeat(8, 1fr) / repeat(8, 1fr);
+  aspect-ratio: 1;
+  /* Leaves room for the controls below. */
+  width: min(560px, 100cqw, 100cqh - 50px);
+  flex: none;
+  border: 1px solid var(--border);
+}
+.square.light { background: #f0d9b5; }
+.square.dark { background: #b58863; }
+.square svg { display: block; width: 100%; height: 100%; }
+
+.viewer-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.viewer-label {
+  min-width: 220px;
+  text-align: center;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.viewer-note { color: var(--muted); font-size: 13px; text-align: center; }
+
 .tok-key { color: #2f6f4f; }
 .tok-string { color: #8a4b2f; }
 .tok-number { color: #3b6ea5; }

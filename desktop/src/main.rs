@@ -1,4 +1,5 @@
-//! Rightchess desktop: a chess.com game browser that shows the recovered games as raw objects.
+//! Rightchess desktop: a chess.com game browser that shows each recovered game as a raw object
+//! or on a board you can step through.
 
 // The rsx! macro's expansion carries spans that trip this lint on otherwise-qualified paths.
 #![allow(unused_qualifications, reason = "rsx! macro expansion spans")]
@@ -8,18 +9,25 @@ use std::sync::{Arc, Mutex};
 use components::badge::{Badge, BadgeVariant};
 use components::button::{Button, ButtonSize, ButtonVariant};
 use components::progress::Progress;
+use components::tabs::{TabContent, TabList, TabTrigger, Tabs};
 use dioxus::prelude::*;
 use rightchess::adapters::FileStore;
 use rightchess::{FailedBatch, Game, SyncReport, YearMonth};
+use viewer::GameViewer;
 
+mod board;
 mod components;
 mod json;
 mod service;
 mod time;
+mod viewer;
 
 const CSS: &str = include_str!("../assets/main.css");
 /// Theme variables the vendored components style themselves from.
 const THEME: &str = include_str!("../assets/dx-components-theme.css");
+
+const DATA_TAB: &str = "data";
+const BOARD_TAB: &str = "board";
 
 fn main() {
     let config = dioxus::desktop::Config::new()
@@ -88,6 +96,7 @@ fn App() -> Element {
     });
     let state = use_signal(|| Load::Idle);
     let mut selected = use_signal(|| None::<usize>);
+    let mut tab = use_signal(|| Some(DATA_TAB.to_string()));
     let max = max_slider();
     let running = matches!(&*state.read(), Load::Running(_));
 
@@ -96,7 +105,7 @@ fn App() -> Element {
         None => "All history".to_string(),
     };
 
-    let (rows, code, status) = {
+    let (rows, game, status) = {
         let current = state.read();
         match &*current {
             Load::Idle => (
@@ -126,13 +135,16 @@ fn App() -> Element {
                     .collect(),
                 selected()
                     .and_then(|index| report.games.get(index))
-                    .map(serde_json::to_string_pretty)
-                    .and_then(Result::ok),
+                    .cloned(),
                 summary(submission, report),
             ),
         }
     };
 
+    let code = game
+        .as_ref()
+        .map(serde_json::to_string_pretty)
+        .and_then(Result::ok);
     let highlighted = code.as_deref().map(json::highlight);
     let has_code = code.is_some();
     let copy_text = code;
@@ -220,25 +232,42 @@ fn App() -> Element {
                         }
                     }
                 }
-                section { class: "inspector",
+                Tabs {
+                    class: "inspector",
+                    value: tab,
+                    on_value_change: move |value| tab.set(Some(value)),
                     div { class: "panel-head",
-                        span { "Game object" }
-                        Button {
-                            variant: ButtonVariant::Ghost,
-                            size: ButtonSize::Sm,
-                            disabled: !has_code,
-                            onclick: move |_| {
-                                if let Some(text) = copy_text.clone() {
-                                    json::copy(&text);
-                                }
-                            },
-                            "Copy"
+                        TabList {
+                            TabTrigger { value: DATA_TAB, index: 0usize, "Game object" }
+                            TabTrigger { value: BOARD_TAB, index: 1usize, "Board" }
+                        }
+                        if tab().as_deref() == Some(DATA_TAB) {
+                            Button {
+                                variant: ButtonVariant::Ghost,
+                                size: ButtonSize::Sm,
+                                disabled: !has_code,
+                                onclick: move |_| {
+                                    if let Some(text) = copy_text.clone() {
+                                        json::copy(&text);
+                                    }
+                                },
+                                "Copy"
+                            }
                         }
                     }
-                    if let Some(html) = highlighted {
-                        pre { class: "code", dangerous_inner_html: html }
-                    } else {
-                        div { class: "empty", "Select a game to inspect its raw game object." }
+                    TabContent { class: "tab-pane", value: DATA_TAB, index: 0usize,
+                        if let Some(html) = highlighted {
+                            pre { class: "code", dangerous_inner_html: html }
+                        } else {
+                            div { class: "empty", "Select a game to inspect its raw game object." }
+                        }
+                    }
+                    TabContent { class: "tab-pane", value: BOARD_TAB, index: 1usize,
+                        if let Some(game) = game {
+                            GameViewer { key: "{game.id.external_id}", pgn: game.pgn }
+                        } else {
+                            div { class: "empty", "Select a game to view its board." }
+                        }
                     }
                 }
             }
