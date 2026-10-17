@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 
 use crate::app::evaluate::{EvalStore, EvaluatorId};
 use crate::app::game_reader::GameReader;
@@ -8,13 +9,13 @@ use crate::app::sync::{BatchKey, SyncStore};
 use crate::chess::NormalizedFen;
 use crate::domain::{Eval, Game};
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct MemoryStore {
     batches: HashMap<BatchKey, StoredBatch>,
     evals: HashMap<(EvaluatorId, NormalizedFen), Eval>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct StoredBatch {
     sealed: bool,
     games: Vec<Game>,

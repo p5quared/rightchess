@@ -1,5 +1,6 @@
 use crate::domain::{Game, SourceKind, YearMonth};
 use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourceQuery {
@@ -8,7 +9,7 @@ pub struct SourceQuery {
     pub since: Option<YearMonth>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct BatchKey {
     pub source: SourceKind,
     pub id: String,

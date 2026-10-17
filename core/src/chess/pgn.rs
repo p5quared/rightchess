@@ -3,7 +3,7 @@ use std::str::FromStr;
 use std::{fmt, iter};
 
 use anyhow::{Context, Result, anyhow, bail, ensure};
-use serde::Serialize;
+use serde::{Deserialize, Deserializer, Serialize, de};
 
 use crate::chess::board::Board;
 use crate::chess::{Date, Fen, Ply};
@@ -98,6 +98,14 @@ impl FromStr for Pgn {
     fn from_str(text: &str) -> Result<Self> {
         mainline(text)?;
         Ok(Pgn(text.to_string()))
+    }
+}
+
+impl<'de> Deserialize<'de> for Pgn {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        String::deserialize(deserializer)?
+            .parse()
+            .map_err(de::Error::custom)
     }
 }
 

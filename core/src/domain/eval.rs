@@ -1,9 +1,11 @@
+use serde::{Deserialize, Serialize};
+
 /// From one side's point of view. Mate counts are in moves.
 ///
 /// `Cp` is an advantage in centipawns, hundredths of a pawn's value: `Cp(150)` is one and a half
 /// pawns up. `Mates(n)` means this side can force checkmate (attack the king with no escape) in
 /// `n` moves, and `Mated(n)` that the other side can.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Score {
     Cp(i32),
     Mates(u8),
@@ -15,7 +17,7 @@ pub enum Score {
 ///
 /// An eval is an engine's judgment of a position: how far ahead one side is, as a [`Score`].
 /// A stalemate is a draw where the side to move has no legal move but isn't in check.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Eval {
     white: Score,
 }

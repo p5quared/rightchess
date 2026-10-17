@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use anyhow::{Context, Result, ensure};
+use serde::{Deserialize, Serialize};
 
 use crate::app::game_reader::GameReader;
 use crate::chess::{Fen, NormalizedFen};
@@ -8,7 +9,7 @@ use crate::domain::{Eval, Game, GameId};
 
 /// Must name every setting that can change the [evals](Eval), e.g. "stockfish 17.1
 /// nodes=1000000" for the Stockfish engine searching a million positions per eval.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct EvaluatorId(pub String);
 
 pub trait Evaluator {

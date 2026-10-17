@@ -2,6 +2,7 @@ use std::fmt;
 use std::str::FromStr;
 
 use anyhow::{Context, Result, ensure};
+use serde::{Deserialize, Deserializer, Serialize, de};
 
 use crate::chess::Fen;
 
@@ -19,7 +20,7 @@ use crate::chess::Fen;
 /// repeated engine [eval](crate::Eval), never a wrong one: a key never stands for two different
 /// positions. Checking that the capture is legal would need `Board` and could fail on positions
 /// that can't be played.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
 pub struct NormalizedFen(String);
 
 impl NormalizedFen {
@@ -98,6 +99,14 @@ fn piece_at(placement: &str, file: i32, rank: usize) -> Option<char> {
         }
     }
     None
+}
+
+impl<'de> Deserialize<'de> for NormalizedFen {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        String::deserialize(deserializer)?
+            .parse()
+            .map_err(de::Error::custom)
+    }
 }
 
 impl fmt::Display for NormalizedFen {
@@ -320,6 +329,15 @@ mod tests {
             }
             let fen = Fen::from(&normalize("8/8/8/8/8/8/8/K6k w - - 99 150"));
             assert_eq!(fen.as_str(), "8/8/8/8/8/8/8/K6k w - - 0 1");
+        }
+
+        #[test]
+        fn deserializing_checks_the_text() {
+            let text = "4k3/8/8/8/3pP3/8/8/4K3 b - e3";
+            let key: NormalizedFen = serde_json::from_value(text.into()).unwrap();
+            assert_eq!(key.as_str(), text);
+            let dropped = "4k3/8/8/4p3/8/8/8/4K3 w - e6";
+            serde_json::from_value::<NormalizedFen>(dropped.into()).expect_err(dropped);
         }
 
         #[test]

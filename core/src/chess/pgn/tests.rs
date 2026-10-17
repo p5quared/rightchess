@@ -27,7 +27,14 @@ fn check_err(text: &str, expected: &str) {
 }
 
 mod spec {
-    use super::{check, check_err};
+    use super::{Pgn, check, check_err};
+
+    #[test]
+    fn deserializing_checks_the_text() {
+        let pgn: Pgn = serde_json::from_str(r#""1. e4 e5 *""#).unwrap();
+        assert_eq!(pgn.as_str(), "1. e4 e5 *");
+        serde_json::from_str::<Pgn>(r#""1. e4 {""#).expect_err("the comment isn't closed");
+    }
 
     #[test]
     fn blank_text_is_a_game_without_moves() {
