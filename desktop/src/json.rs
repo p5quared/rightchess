@@ -19,9 +19,7 @@ impl Meta {
             (Some(white), Some(black)) => Some(format!("{white} vs {black}")),
             _ => None,
         };
-        let date = self
-            .date
-            .map(|date| format!("{:04}.{:02}.{:02}", date.year, date.month, date.day));
+        let date = self.date.as_ref().map(ToString::to_string);
         [date, players, self.result.clone()]
             .into_iter()
             .flatten()

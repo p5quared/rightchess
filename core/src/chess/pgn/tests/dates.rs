@@ -16,10 +16,6 @@ fn date(year: u16, month: u8, day: u8) -> Date {
     Date { year, month, day }
 }
 
-fn written(date: Date) -> String {
-    format!("{:04}.{:02}.{:02}", date.year, date.month, date.day)
-}
-
 /// The game's only date tag is `[Date "value"]`.
 #[track_caller]
 fn check(value: &str, expected: Option<Date>) {
@@ -138,7 +134,7 @@ mod properties {
     use proptest::prelude::*;
     use proptest::test_runner::FileFailurePersistence;
 
-    use super::{Date, date, pgn, written};
+    use super::{Date, date, pgn};
 
     /// Every real day from year 0 to 9999, in the proleptic Gregorian calendar.
     fn real_day() -> impl Strategy<Value = Date> {
@@ -163,7 +159,7 @@ mod properties {
 
         #[test]
         fn every_real_day_reads_back(day in real_day()) {
-            let text = written(day);
+            let text = day.to_string();
             prop_assert_eq!(pgn(&[("Date", &text)]).date(), Some(day), "{}", text);
             prop_assert_eq!(pgn(&[("UTCDate", &text)]).date(), Some(day), "{}", text);
         }
@@ -172,13 +168,13 @@ mod properties {
         #[test]
         fn a_date_is_written_exactly_as_its_value(value in r"[0-9.?+ -]{0,12}|[0-9]{4}\.[0-9]{2}\.[0-9]{2}") {
             if let Some(day) = pgn(&[("Date", &value)]).date() {
-                prop_assert_eq!(written(day), value);
+                prop_assert_eq!(day.to_string(), value);
             }
         }
 
         #[test]
         fn dates_order_as_their_text(a in real_day(), b in real_day()) {
-            prop_assert_eq!(a.cmp(&b), written(a).cmp(&written(b)));
+            prop_assert_eq!(a.cmp(&b), a.to_string().cmp(&b.to_string()));
         }
     }
 }
