@@ -41,8 +41,8 @@ jobs:
             *) tar xzf "$archive" ;;
           esac
           echo "STOCKFISH=$RUNNER_TEMP/stockfish/$asset" >> "$GITHUB_ENV"
-      - run: cargo build --all-targets --locked
-      - run: cargo test --locked
+      - run: cargo build -p rightchess --all-targets --locked
+      - run: cargo test -p rightchess --locked
 
   lint:
     runs-on: ubuntu-latest
@@ -53,4 +53,25 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
-      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo clippy -p rightchess --all-targets --locked -- -D warnings
+
+  desktop:
+    name: desktop (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      # The webview stack (wry, tao, muda) links these on Linux.
+      - name: Install system libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev
+      - run: cargo clippy -p rightchess-desktop --all-targets --locked -- -D warnings
+      - run: cargo build -p rightchess-desktop --all-targets --locked
+      - run: cargo test -p rightchess-desktop --locked
